@@ -1,0 +1,15 @@
+# Windows FeatureUsage Analyzer Requirements
+# No external dependencies required - uses only Python standard library
+# This file is included for future extensibility
+
+# Core dependencies (built-in to Python)
+# - winreg (Windows registry access)
+# - json (JSON serialization)
+# - datetime (Timestamp handling)
+# - struct (Binary data parsing)
+
+# Optional dependencies for future enhancements:
+# - psutil (for process information)
+# - win32api (for advanced Windows API access)
+# - pandas (for data analysis)
+# - matplotlib (for visualization) 
