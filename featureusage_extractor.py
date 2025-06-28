@@ -733,6 +733,53 @@ class FeatureUsageExtractor:
         print("After performing these activities, run the extractor again to see if data appears.")
         print("=" * 60)
 
+    def export_to_html(self, filename: str = None) -> str:
+        """Export the extraction results to an HTML file with tables."""
+        if filename is None:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"featureusage_extraction_{timestamp}.html"
+
+        def dicts_to_html_table(dicts, title):
+            if not dicts:
+                return f'<h2>{title}</h2><p>No data found.</p>'
+            headers = sorted({k for d in dicts for k in d.keys()})
+            html = [f'<h2>{title}</h2>', '<table border="1" cellspacing="0" cellpadding="4">']
+            html.append('<tr>' + ''.join(f'<th>{h}</th>' for h in headers) + '</tr>')
+            for d in dicts:
+                html.append('<tr>' + ''.join(f'<td>{d.get(h, "")}</td>' for h in headers) + '</tr>')
+            html.append('</table>')
+            return '\n'.join(html)
+
+        html_parts = [
+            '<!DOCTYPE html>',
+            '<html lang="en">',
+            '<head>',
+            '<meta charset="UTF-8">',
+            '<title>Windows FeatureUsage Extraction Report</title>',
+            '<style>body{font-family:sans-serif;}table{border-collapse:collapse;}th,td{padding:4px 8px;}th{background:#eee;}</style>',
+            '</head>',
+            '<body>',
+            f'<h1>Windows FeatureUsage Extraction Report</h1>',
+            f'<p>Extraction time: {self.results.get("extraction_time", "")}</p>',
+            f'<p>Current User SID: {self.results.get("current_user_sid", "")}</p>',
+            f'<p>Total entries: {self.results.get("total_entries", 0)}</p>',
+            f'<p>Summary: {self.results.get("summary", {})}</p>',
+        ]
+        html_parts.append(dicts_to_html_table(self.results.get("featureusage_data", []), "FeatureUsage Data"))
+        html_parts.append(dicts_to_html_table(self.results.get("appswitched_data", []), "AppSwitched Data (All)") )
+        html_parts.append(dicts_to_html_table(self.results.get("advanced_appswitched_data", []), "Advanced AppSwitched Data"))
+        html_parts.append('</body></html>')
+
+        html_content = '\n'.join(html_parts)
+        try:
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write(html_content)
+            print(f"\nHTML report saved to: {filename}")
+            return filename
+        except Exception as e:
+            print(f"Error saving HTML report: {e}")
+            return ""
+
 
 def main():
     """Main function to run the FeatureUsage extraction."""
@@ -753,12 +800,19 @@ def main():
         # Save results
         output_file = extractor.save_results()
         
+        # Export to HTML
+        html_file = extractor.export_to_html()
+        
         if output_file:
             print(f"\nExtraction completed successfully!")
             print(f"Results saved to: {output_file}")
         else:
             print("\nExtraction completed but failed to save results.")
-            
+        if html_file:
+            print(f"HTML report saved to: {html_file}")
+        else:
+            print("Failed to save HTML report.")
+        
     except Exception as e:
         print(f"Error during extraction: {e}")
         sys.exit(1)
