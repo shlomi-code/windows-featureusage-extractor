@@ -6,6 +6,7 @@ This script extracts FeatureUsage artifacts from the Windows registry
 for the currently running user. Based on the information from:
 https://medium.com/@boutnaru/the-windows-forensic-journey-featureusage-aed8f14c84ab
 https://medium.com/@boutnaru/the-windows-forensic-journey-appswitched-55abc690f0f0
+https://medium.com/@boutnaru/the-windows-forensic-journey-showjumpview-ec24a17ecaf0
 
 Author: Windows FeatureUsage Analyzer
 """
@@ -30,7 +31,8 @@ class FeatureUsageExtractor:
             "current_user_sid": self.current_user_sid,
             "featureusage_data": [],
             "appswitched_data": [],
-            "advanced_appswitched_data": []
+            "advanced_appswitched_data": [],
+            "showjumpview_data": []
         }
     
     def _get_current_user_sid(self) -> str:
@@ -481,6 +483,63 @@ class FeatureUsageExtractor:
         
         return entries
     
+    def extract_showjumpview_data(self) -> List[Dict[str, Any]]:
+        """Extract ShowJumpView FeatureUsage data."""
+        print("Extracting ShowJumpView FeatureUsage data...")
+        showjumpview_path = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FeatureUsage\\ShowJumpView"
+        entries = []
+        try:
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, showjumpview_path)
+            try:
+                value_count, subkey_count, _ = winreg.QueryInfoKey(key)
+                print(f"  Registry key info: {value_count} values, {subkey_count} subkeys")
+            except Exception as e:
+                print(f"  Warning: Could not get key info: {e}")
+                value_count = 0
+            if value_count == 0:
+                print("  ⚠️  No values found in ShowJumpView registry key")
+            i = 0
+            while True:
+                try:
+                    value_name, value_data, value_type = winreg.EnumValue(key, i)
+                    print(f"  Found value: {value_name} (type: {value_type}, size: {len(value_data) if isinstance(value_data, bytes) else len(str(value_data))})")
+                    if value_type == winreg.REG_DWORD and isinstance(value_data, int):
+                        entry = {
+                            "timestamp": datetime.now().isoformat(),
+                            "app_identifier": value_name,
+                            "usage_count": value_data,
+                            "raw_value": value_data,
+                            "value_type": "REG_DWORD",
+                            "source": "ShowJumpView",
+                            "value_name": value_name,
+                            "raw_data_size": 4
+                        }
+                        if value_name.endswith(".exe"):
+                            entry["entry_type"] = "Executable"
+                            entry["executable_path"] = value_name
+                        elif "!" in value_name:
+                            entry["entry_type"] = "UWP_App"
+                            entry["app_package"] = value_name
+                        else:
+                            entry["entry_type"] = "Application"
+                            entry["app_name"] = value_name
+                        entries.append(entry)
+                        print(f"    Parsed DWORD entry: {entry['entry_type']} - {entry['app_identifier']}")
+                    else:
+                        print(f"    Skipping non-dword value (type: {value_type})")
+                    i += 1
+                except WindowsError:
+                    break
+            winreg.CloseKey(key)
+            if not entries:
+                print("  ℹ️  No ShowJumpView data extracted.")
+            else:
+                print(f"  ✓ Successfully extracted {len(entries)} ShowJumpView entries")
+            return entries
+        except Exception as e:
+            print(f"Error extracting ShowJumpView data: {e}")
+            return []
+    
     def extract_all_data(self) -> Dict[str, Any]:
         """Extract all FeatureUsage data from registry."""
         print("Starting FeatureUsage artifact extraction...")
@@ -493,6 +552,7 @@ class FeatureUsageExtractor:
         startmenu_data = self.extract_startmenu_data()
         search_data = self.extract_search_data()
         taskbar_data = self.extract_taskbar_data()
+        showjumpview_data = self.extract_showjumpview_data()
         
         # Check for alternative sources if no AppSwitched data found
         if not appswitched_data and not appswitched_advanced_data and not taskbar_data:
@@ -504,7 +564,7 @@ class FeatureUsageExtractor:
                 self.provide_test_data_suggestions()
         
         # Combine all data
-        all_data = appswitched_data + startmenu_data + search_data
+        all_data = appswitched_data + startmenu_data + search_data + showjumpview_data
         all_appswitched_data = appswitched_data + appswitched_advanced_data + taskbar_data
         
         # Sort by timestamp
@@ -514,6 +574,7 @@ class FeatureUsageExtractor:
         self.results["featureusage_data"] = all_data
         self.results["appswitched_data"] = all_appswitched_data
         self.results["advanced_appswitched_data"] = appswitched_advanced_data + taskbar_data
+        self.results["showjumpview_data"] = showjumpview_data
         self.results["total_entries"] = len(all_data)
         self.results["appswitched_entries"] = len(all_appswitched_data)
         self.results["summary"] = {
@@ -522,6 +583,7 @@ class FeatureUsageExtractor:
             "taskbar_entries": len(taskbar_data),
             "startmenu_entries": len(startmenu_data),
             "search_entries": len(search_data),
+            "showjumpview_entries": len(showjumpview_data),
             "total_appswitched_entries": len(all_appswitched_data)
         }
         
@@ -532,6 +594,7 @@ class FeatureUsageExtractor:
         print(f"Taskbar AppSwitched entries: {len(taskbar_data)}")
         print(f"StartMenu entries: {len(startmenu_data)}")
         print(f"Search entries: {len(search_data)}")
+        print(f"ShowJumpView entries: {len(showjumpview_data)}")
         print(f"Total AppSwitched-related entries: {len(all_appswitched_data)}")
         
         # Provide additional feedback if no AppSwitched data
@@ -733,7 +796,7 @@ class FeatureUsageExtractor:
         print("After performing these activities, run the extractor again to see if data appears.")
         print("=" * 60)
 
-    def export_to_html(self, filename: str = None) -> str:
+    def export_to_html(self, filename: Optional[str] = None) -> str:
         """Export the extraction results to an HTML file with tables."""
         if filename is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -768,6 +831,7 @@ class FeatureUsageExtractor:
         html_parts.append(dicts_to_html_table(self.results.get("featureusage_data", []), "FeatureUsage Data"))
         html_parts.append(dicts_to_html_table(self.results.get("appswitched_data", []), "AppSwitched Data (All)") )
         html_parts.append(dicts_to_html_table(self.results.get("advanced_appswitched_data", []), "Advanced AppSwitched Data"))
+        html_parts.append(dicts_to_html_table(self.results.get("showjumpview_data", []), "ShowJumpView Data"))
         html_parts.append('</body></html>')
 
         html_content = '\n'.join(html_parts)
