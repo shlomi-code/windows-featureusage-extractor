@@ -21,6 +21,9 @@ from typing import Dict, List, Any, Optional
 import struct
 import argparse
 
+# Import the GUID resolver
+from featureusage.guid_resolver import GUIDResolver
+
 
 class FeatureUsageExtractor:
     """Extracts FeatureUsage artifacts from Windows registry."""
@@ -40,6 +43,8 @@ class FeatureUsageExtractor:
             "startmenu_data": [],
             "search_data": []
         }
+        # Initialize GUID resolver
+        self.guid_resolver = GUIDResolver()
     
     def _get_current_user_sid(self) -> str:
         """Get the SID of the currently running user."""
@@ -707,14 +712,23 @@ class FeatureUsageExtractor:
         all_data.sort(key=lambda x: x.get("timestamp", ""))
         all_appswitched_data.sort(key=lambda x: x.get("timestamp", ""))
         
-        self.results["featureusage_data"] = all_data
-        self.results["appswitched_data"] = all_appswitched_data
-        self.results["advanced_appswitched_data"] = appswitched_advanced_data + taskbar_data
-        self.results["showjumpview_data"] = showjumpview_data
-        self.results["appbadgeupdated_data"] = appbadgeupdated_data
-        self.results["applaunch_data"] = applaunch_data
-        self.results["total_entries"] = len(all_data)
-        self.results["appswitched_entries"] = len(all_appswitched_data)
+        # Resolve GUIDs in all extracted data
+        print("\nResolving Windows Known Folder GUIDs...")
+        resolved_all_data = self._resolve_guids_in_data(all_data)
+        resolved_all_appswitched_data = self._resolve_guids_in_data(all_appswitched_data)
+        resolved_appswitched_advanced_data = self._resolve_guids_in_data(appswitched_advanced_data + taskbar_data)
+        resolved_showjumpview_data = self._resolve_guids_in_data(showjumpview_data)
+        resolved_appbadgeupdated_data = self._resolve_guids_in_data(appbadgeupdated_data)
+        resolved_applaunch_data = self._resolve_guids_in_data(applaunch_data)
+        
+        self.results["featureusage_data"] = resolved_all_data
+        self.results["appswitched_data"] = resolved_all_appswitched_data
+        self.results["advanced_appswitched_data"] = resolved_appswitched_advanced_data
+        self.results["showjumpview_data"] = resolved_showjumpview_data
+        self.results["appbadgeupdated_data"] = resolved_appbadgeupdated_data
+        self.results["applaunch_data"] = resolved_applaunch_data
+        self.results["total_entries"] = len(resolved_all_data)
+        self.results["appswitched_entries"] = len(resolved_all_appswitched_data)
         self.results["summary"] = {
             "appswitched_entries": len(appswitched_data),
             "appswitched_advanced_entries": len(appswitched_advanced_data),
@@ -724,11 +738,11 @@ class FeatureUsageExtractor:
             "showjumpview_entries": len(showjumpview_data),
             "appbadgeupdated_entries": len(appbadgeupdated_data),
             "applaunch_entries": len(applaunch_data),
-            "total_appswitched_entries": len(all_appswitched_data)
+            "total_appswitched_entries": len(resolved_all_appswitched_data)
         }
         
         print(f"\nExtraction completed!")
-        print(f"Total entries found: {len(all_data)}")
+        print(f"Total entries found: {len(resolved_all_data)}")
         print(f"AppSwitched entries: {len(appswitched_data)}")
         print(f"Advanced AppSwitched entries: {len(appswitched_advanced_data)}")
         print(f"Taskbar AppSwitched entries: {len(taskbar_data)}")
@@ -737,10 +751,10 @@ class FeatureUsageExtractor:
         print(f"ShowJumpView entries: {len(showjumpview_data)}")
         print(f"AppBadgeUpdated entries: {len(appbadgeupdated_data)}")
         print(f"AppLaunch entries: {len(applaunch_data)}")
-        print(f"Total AppSwitched-related entries: {len(all_appswitched_data)}")
+        print(f"Total AppSwitched-related entries: {len(resolved_all_appswitched_data)}")
         
         # Provide additional feedback if no AppSwitched data
-        if len(all_appswitched_data) == 0:
+        if len(resolved_all_appswitched_data) == 0:
             print("\n⚠️  No AppSwitched data was found.")
             print("This is normal if:")
             print("  - FeatureUsage is disabled")
@@ -749,6 +763,39 @@ class FeatureUsageExtractor:
             print("  - Privacy settings prevent data collection")
         
         return self.results
+    
+    def _resolve_guids_in_data(self, data_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Resolve Windows Known Folder GUIDs in the extracted data.
+        Creates app_identifier_resolved column while keeping app_identifier unchanged.
+        
+        Args:
+            data_list: List of dictionaries containing extracted data
+            
+        Returns:
+            List of dictionaries with resolved GUIDs in new app_identifier_resolved column
+        """
+        resolved_data = []
+        
+        for entry in data_list:
+            resolved_entry = entry.copy()  # Copy all original data
+            
+            # Check if app_identifier exists and create app_identifier_resolved
+            if "app_identifier" in entry:
+                original_app_identifier = entry["app_identifier"]
+                
+                # Check if the app_identifier contains a GUID pattern
+                if isinstance(original_app_identifier, str) and "{" in original_app_identifier and "}" in original_app_identifier:
+                    # Replace GUIDs in the app_identifier with their resolved values
+                    resolved_app_identifier = self.guid_resolver.replace_guid_with_resolved(original_app_identifier)
+                    resolved_entry["app_identifier_resolved"] = resolved_app_identifier
+                else:
+                    # No GUID pattern found, keep the same value
+                    resolved_entry["app_identifier_resolved"] = original_app_identifier
+            
+            resolved_data.append(resolved_entry)
+        
+        return resolved_data
     
     def save_results(self, filename: Optional[str] = None) -> str:
         """Save extraction results to a JSON file."""
@@ -979,7 +1026,8 @@ class FeatureUsageExtractor:
             for d in dicts:
                 table_html += '<tr>'
                 for h in headers:
-                    table_html += f'<td>{d.get(h, "")}</td>'
+                    value = d.get(h, "")
+                    table_html += f'<td>{value}</td>'
                 table_html += '</tr>'
             
             table_html += '''
