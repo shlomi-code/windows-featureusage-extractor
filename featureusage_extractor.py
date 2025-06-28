@@ -19,6 +19,7 @@ import sys
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 import struct
+import argparse
 
 
 class FeatureUsageExtractor:
@@ -1230,6 +1231,25 @@ class FeatureUsageExtractor:
 
 def main():
     """Main function to run the FeatureUsage extraction."""
+    # Set up command line argument parsing
+    parser = argparse.ArgumentParser(
+        description="Windows FeatureUsage Artifact Extractor - Enhanced with Advanced AppSwitched Support",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python featureusage_extractor.py                    # Generate HTML report only (default)
+  python featureusage_extractor.py --json             # Generate both HTML and JSON reports
+  python featureusage_extractor.py -j                 # Short form for JSON export
+        """
+    )
+    parser.add_argument(
+        '--json', '-j',
+        action='store_true',
+        help='Also export results to JSON format'
+    )
+    
+    args = parser.parse_args()
+    
     print("Windows FeatureUsage Artifact Extractor")
     print("Enhanced with Advanced AppSwitched Support")
     print("=" * 50)
@@ -1244,21 +1264,24 @@ def main():
         # Print summary
         extractor.print_summary()
         
-        # Save results
-        output_file = extractor.save_results()
-        
-        # Export to HTML
+        # Export to HTML (always done)
         html_file = extractor.export_to_html()
-        
-        if output_file:
-            print(f"\nExtraction completed successfully!")
-            print(f"Results saved to: {output_file}")
-        else:
-            print("\nExtraction completed but failed to save results.")
         if html_file:
-            print(f"HTML report saved to: {html_file}")
+            print(f"\nHTML report saved to: {html_file}")
         else:
             print("Failed to save HTML report.")
+        
+        # Export to JSON (only if requested)
+        if args.json:
+            output_file = extractor.save_results()
+            if output_file:
+                print(f"JSON results saved to: {output_file}")
+            else:
+                print("Failed to save JSON results.")
+        else:
+            print("JSON export skipped (use --json to enable)")
+        
+        print(f"\nExtraction completed successfully!")
         
     except Exception as e:
         print(f"Error during extraction: {e}")
