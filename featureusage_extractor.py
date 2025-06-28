@@ -7,6 +7,7 @@ for the currently running user. Based on the information from:
 https://medium.com/@boutnaru/the-windows-forensic-journey-featureusage-aed8f14c84ab
 https://medium.com/@boutnaru/the-windows-forensic-journey-appswitched-55abc690f0f0
 https://medium.com/@boutnaru/the-windows-forensic-journey-showjumpview-ec24a17ecaf0
+https://medium.com/@boutnaru/the-windows-forensic-journey-applaunch-617c0635e126
 
 Author: Windows FeatureUsage Analyzer
 """
@@ -948,13 +949,19 @@ class FeatureUsageExtractor:
 
         def dicts_to_html_table(dicts, title, table_id):
             if not dicts:
-                return f'<h2>{title}</h2><p>No data found.</p>'
+                return f'<div class="table-section"><div class="table-header" onclick="toggleTable(\'{table_id}\')"><span class="toggle-icon">▶</span> {title} <span class="entry-count">(No data found)</span></div><div id="{table_id}-content" class="table-content collapsed"><p>No data found.</p></div></div>'
+            
             headers = sorted({k for d in dicts for k in d.keys()})
-            html = [f'<h2>{title}</h2>', f'<table id="{table_id}" border="1" cellspacing="0" cellpadding="4" class="data-table">']
+            html = [
+                f'<div class="table-section">',
+                f'<div class="table-header" onclick="toggleTable(\'{table_id}\')"><span class="toggle-icon">▶</span> {title} <span class="entry-count">({len(dicts)} entries)</span></div>',
+                f'<div id="{table_id}-content" class="table-content collapsed">',
+                f'<table id="{table_id}" border="1" cellspacing="0" cellpadding="4" class="data-table">'
+            ]
             html.append('<tr>' + ''.join(f'<th>{h}</th>' for h in headers) + '</tr>')
             for d in dicts:
                 html.append('<tr>' + ''.join(f'<td>{d.get(h, "")}</td>' for h in headers) + '</tr>')
-            html.append('</table>')
+            html.append('</table></div></div>')
             return '\n'.join(html)
 
         html_parts = [
@@ -980,7 +987,14 @@ class FeatureUsageExtractor:
             '.hidden{display:none;}',
             '.highlight{background-color:#fff3cd;font-weight:bold;}',
             '.no-results{color:#dc3545;font-style:italic;padding:10px;background:#f8d7da;border:1px solid #f5c6cb;border-radius:4px;margin:10px 0;}',
-            '.table-header{background:#e9ecef;padding:10px;border-radius:4px;margin:10px 0;font-weight:bold;}',
+            '.table-section{margin:15px 0;border:1px solid #ddd;border-radius:5px;overflow:hidden;}',
+            '.table-header{background:#e9ecef;padding:12px 15px;cursor:pointer;font-weight:bold;font-size:16px;border-bottom:1px solid #ddd;transition:background-color 0.2s;}',
+            '.table-header:hover{background:#d1ecf1;}',
+            '.toggle-icon{display:inline-block;margin-right:10px;font-size:12px;transition:transform 0.2s;}',
+            '.entry-count{float:right;font-size:14px;color:#6c757d;font-weight:normal;}',
+            '.table-content{padding:15px;background:white;transition:max-height 0.3s ease-out;overflow:hidden;}',
+            '.table-content.collapsed{max-height:0;padding:0 15px;}',
+            '.table-content.expanded{max-height:2000px;}',
             '</style>',
             '</head>',
             '<body>',
@@ -1002,6 +1016,22 @@ class FeatureUsageExtractor:
             
             # JavaScript for search functionality
             '<script>',
+            'function toggleTable(tableId) {',
+            '    const content = document.getElementById(tableId + "-content");',
+            '    const header = content.previousElementSibling;',
+            '    const icon = header.querySelector(".toggle-icon");',
+            '    ',
+            '    if (content.classList.contains("collapsed")) {',
+            '        content.classList.remove("collapsed");',
+            '        content.classList.add("expanded");',
+            '        icon.textContent = "▼";',
+            '    } else {',
+            '        content.classList.remove("expanded");',
+            '        content.classList.add("collapsed");',
+            '        icon.textContent = "▶";',
+            '    }',
+            '}',
+            '',
             'function searchData() {',
             '    const searchTerm = document.getElementById("searchInput").value.toLowerCase().trim();',
             '    const tables = document.querySelectorAll(".data-table");',
@@ -1053,26 +1083,26 @@ class FeatureUsageExtractor:
             '            }',
             '        });',
             '',
-            '        // Always show table, but add visual indicator if no matches',
-            '        const tableContainer = table.parentElement;',
-            '        tableContainer.style.display = "block";',
+            '        // Handle table visibility and expansion',
+            '        const tableSection = table.closest(".table-section");',
+            '        const tableContent = tableSection.querySelector(".table-content");',
+            '        const tableHeader = tableSection.querySelector(".table-header");',
             '        ',
             '        if (tableMatches > 0) {',
             '            tablesWithMatches++;',
+            '            tableSection.style.display = "block";',
+            '            // Expand table if it has matches',
+            '            if (tableContent.classList.contains("collapsed")) {',
+            '                toggleTable(table.id);',
+            '            }',
             '            // Remove any existing no-results indicator',
-            '            const existingIndicator = tableContainer.querySelector(".no-results-indicator");',
+            '            const existingIndicator = tableSection.querySelector(".no-results-indicator");',
             '            if (existingIndicator) {',
             '                existingIndicator.remove();',
             '            }',
             '        } else {',
-            '            // Add no-results indicator for this table',
-            '            const existingIndicator = tableContainer.querySelector(".no-results-indicator");',
-            '            if (!existingIndicator) {',
-            '                const indicator = document.createElement("div");',
-            '                indicator.className = "no-results-indicator no-results";',
-            '                indicator.textContent = `No matches found in ${tableContainer.querySelector("h2").textContent}`;',
-            '                tableContainer.insertBefore(indicator, table);',
-            '            }',
+            '            // Hide table section if no matches',
+            '            tableSection.style.display = "none";',
             '        }',
             '    });',
             '',
@@ -1102,9 +1132,11 @@ class FeatureUsageExtractor:
             '            const cells = row.querySelectorAll("td");',
             '            cells.forEach(cell => cell.classList.remove("highlight"));',
             '        });',
-            '        table.parentElement.style.display = "block";',
+            '        // Show all table sections',
+            '        const tableSection = table.closest(".table-section");',
+            '        tableSection.style.display = "block";',
             '        // Remove any no-results indicators',
-            '        const indicators = table.parentElement.querySelectorAll(".no-results-indicator");',
+            '        const indicators = tableSection.querySelectorAll(".no-results-indicator");',
             '        indicators.forEach(indicator => indicator.remove());',
             '    });',
             '}',
