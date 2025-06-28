@@ -866,16 +866,16 @@ class FeatureUsageExtractor:
         print("=" * 60)
 
     def export_to_html(self, filename: Optional[str] = None) -> str:
-        """Export the extraction results to an HTML file with tables."""
+        """Export the extraction results to an HTML file with tables and search functionality."""
         if filename is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"featureusage_extraction_{timestamp}.html"
 
-        def dicts_to_html_table(dicts, title):
+        def dicts_to_html_table(dicts, title, table_id):
             if not dicts:
                 return f'<h2>{title}</h2><p>No data found.</p>'
             headers = sorted({k for d in dicts for k in d.keys()})
-            html = [f'<h2>{title}</h2>', '<table border="1" cellspacing="0" cellpadding="4">']
+            html = [f'<h2>{title}</h2>', f'<table id="{table_id}" border="1" cellspacing="0" cellpadding="4" class="data-table">']
             html.append('<tr>' + ''.join(f'<th>{h}</th>' for h in headers) + '</tr>')
             for d in dicts:
                 html.append('<tr>' + ''.join(f'<td>{d.get(h, "")}</td>' for h in headers) + '</tr>')
@@ -888,20 +888,175 @@ class FeatureUsageExtractor:
             '<head>',
             '<meta charset="UTF-8">',
             '<title>Windows FeatureUsage Extraction Report</title>',
-            '<style>body{font-family:sans-serif;}table{border-collapse:collapse;}th,td{padding:4px 8px;}th{background:#eee;}</style>',
+            '<style>',
+            'body{font-family:sans-serif;margin:20px;}',
+            'table{border-collapse:collapse;margin:20px 0;}',
+            'th,td{padding:8px 12px;text-align:left;border:1px solid #ddd;}',
+            'th{background:#f2f2f2;font-weight:bold;}',
+            'tr:nth-child(even){background-color:#f9f9f9;}',
+            'tr:hover{background-color:#f5f5f5;}',
+            '.search-container{margin:20px 0;padding:15px;background:#f8f9fa;border-radius:5px;}',
+            '.search-input{width:300px;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:14px;}',
+            '.search-button{padding:8px 16px;background:#007bff;color:white;border:none;border-radius:4px;cursor:pointer;margin-left:10px;}',
+            '.search-button:hover{background:#0056b3;}',
+            '.clear-button{padding:8px 16px;background:#6c757d;color:white;border:none;border-radius:4px;cursor:pointer;margin-left:10px;}',
+            '.clear-button:hover{background:#545b62;}',
+            '.stats{margin:10px 0;font-size:14px;color:#666;}',
+            '.hidden{display:none;}',
+            '.highlight{background-color:#fff3cd;font-weight:bold;}',
+            '.no-results{color:#dc3545;font-style:italic;padding:10px;background:#f8d7da;border:1px solid #f5c6cb;border-radius:4px;margin:10px 0;}',
+            '.table-header{background:#e9ecef;padding:10px;border-radius:4px;margin:10px 0;font-weight:bold;}',
+            '</style>',
             '</head>',
             '<body>',
             f'<h1>Windows FeatureUsage Extraction Report</h1>',
-            f'<p>Extraction time: {self.results.get("extraction_time", "")}</p>',
-            f'<p>Current User SID: {self.results.get("current_user_sid", "")}</p>',
-            f'<p>Total entries: {self.results.get("total_entries", 0)}</p>',
-            f'<p>Summary: {self.results.get("summary", {})}</p>',
+            f'<p><strong>Extraction time:</strong> {self.results.get("extraction_time", "")}</p>',
+            f'<p><strong>Current User SID:</strong> {self.results.get("current_user_sid", "")}</p>',
+            f'<p><strong>Total entries:</strong> {self.results.get("total_entries", 0)}</p>',
+            f'<p><strong>Summary:</strong> {self.results.get("summary", {})}</p>',
+            
+            # Search functionality
+            '<div class="search-container">',
+            '<h3>🔍 Search Data</h3>',
+            '<input type="text" id="searchInput" class="search-input" placeholder="Search for applications, timestamps, or any data...">',
+            '<button onclick="searchData()" class="search-button">Search</button>',
+            '<button onclick="clearSearch()" class="clear-button">Clear</button>',
+            '<div class="stats" id="searchStats"></div>',
+            '<div id="noResultsMessage" class="no-results" style="display:none;">No results found for your search. Try a shorter or different search term.</div>',
+            '</div>',
+            
+            # JavaScript for search functionality
+            '<script>',
+            'function searchData() {',
+            '    const searchTerm = document.getElementById("searchInput").value.toLowerCase().trim();',
+            '    const tables = document.querySelectorAll(".data-table");',
+            '    const noResultsDiv = document.getElementById("noResultsMessage");',
+            '    let totalMatches = 0;',
+            '    let totalRows = 0;',
+            '    let tablesWithMatches = 0;',
+            '',
+            '    // Hide no results message initially',
+            '    noResultsDiv.style.display = "none";',
+            '',
+            '    if (!searchTerm) {',
+            '        clearSearch();',
+            '        return;',
+            '    }',
+            '',
+            '    tables.forEach(table => {',
+            '        const rows = table.querySelectorAll("tr");',
+            '        let tableMatches = 0;',
+            '        let visibleRows = 0;',
+            '',
+            '        rows.forEach((row, index) => {',
+            '            if (index === 0) {',
+            '                // Always show header row',
+            '                row.style.display = "";',
+            '                return;',
+            '            }',
+            '            totalRows++;',
+            '            const cells = row.querySelectorAll("td");',
+            '            let rowMatch = false;',
+            '',
+            '            cells.forEach(cell => {',
+            '                const cellText = cell.textContent.toLowerCase();',
+            '                if (cellText.includes(searchTerm)) {',
+            '                    rowMatch = true;',
+            '                    cell.classList.add("highlight");',
+            '                } else {',
+            '                    cell.classList.remove("highlight");',
+            '                }',
+            '            });',
+            '',
+            '            if (rowMatch) {',
+            '                row.style.display = "";',
+            '                tableMatches++;',
+            '                totalMatches++;',
+            '                visibleRows++;',
+            '            } else {',
+            '                row.style.display = "none";',
+            '            }',
+            '        });',
+            '',
+            '        // Always show table, but add visual indicator if no matches',
+            '        const tableContainer = table.parentElement;',
+            '        tableContainer.style.display = "block";',
+            '        ',
+            '        if (tableMatches > 0) {',
+            '            tablesWithMatches++;',
+            '            // Remove any existing no-results indicator',
+            '            const existingIndicator = tableContainer.querySelector(".no-results-indicator");',
+            '            if (existingIndicator) {',
+            '                existingIndicator.remove();',
+            '            }',
+            '        } else {',
+            '            // Add no-results indicator for this table',
+            '            const existingIndicator = tableContainer.querySelector(".no-results-indicator");',
+            '            if (!existingIndicator) {',
+            '                const indicator = document.createElement("div");',
+            '                indicator.className = "no-results-indicator no-results";',
+            '                indicator.textContent = `No matches found in ${tableContainer.querySelector("h2").textContent}`;',
+            '                tableContainer.insertBefore(indicator, table);',
+            '            }',
+            '        }',
+            '    });',
+            '',
+            '    // Update search stats',
+            '    const statsDiv = document.getElementById("searchStats");',
+            '    if (searchTerm) {',
+            '        if (totalMatches > 0) {',
+            '            statsDiv.innerHTML = `Found ${totalMatches} matches out of ${totalRows} total entries in ${tablesWithMatches} table(s)`;',
+            '        } else {',
+            '            statsDiv.innerHTML = `No matches found in any table`;',
+            '            noResultsDiv.style.display = "block";',
+            '        }',
+            '    } else {',
+            '        statsDiv.innerHTML = "";',
+            '    }',
+            '}',
+            '',
+            'function clearSearch() {',
+            '    document.getElementById("searchInput").value = "";',
+            '    document.getElementById("searchStats").innerHTML = "";',
+            '    document.getElementById("noResultsMessage").style.display = "none";',
+            '    const tables = document.querySelectorAll(".data-table");',
+            '    tables.forEach(table => {',
+            '        const rows = table.querySelectorAll("tr");',
+            '        rows.forEach(row => {',
+            '            row.style.display = "";',
+            '            const cells = row.querySelectorAll("td");',
+            '            cells.forEach(cell => cell.classList.remove("highlight"));',
+            '        });',
+            '        table.parentElement.style.display = "block";',
+            '        // Remove any no-results indicators',
+            '        const indicators = table.parentElement.querySelectorAll(".no-results-indicator");',
+            '        indicators.forEach(indicator => indicator.remove());',
+            '    });',
+            '}',
+            '',
+            '// Enable search on Enter key',
+            'document.getElementById("searchInput").addEventListener("keypress", function(event) {',
+            '    if (event.key === "Enter") {',
+            '        searchData();',
+            '    }',
+            '});',
+            '',
+            '// Enable real-time search as you type (with debouncing)',
+            'let searchTimeout;',
+            'document.getElementById("searchInput").addEventListener("input", function() {',
+            '    clearTimeout(searchTimeout);',
+            '    searchTimeout = setTimeout(searchData, 300); // Search after 300ms of no typing',
+            '});',
+            '</script>',
         ]
-        html_parts.append(dicts_to_html_table(self.results.get("featureusage_data", []), "FeatureUsage Data"))
-        html_parts.append(dicts_to_html_table(self.results.get("appswitched_data", []), "AppSwitched Data (All)") )
-        html_parts.append(dicts_to_html_table(self.results.get("advanced_appswitched_data", []), "Advanced AppSwitched Data"))
-        html_parts.append(dicts_to_html_table(self.results.get("showjumpview_data", []), "ShowJumpView Data"))
-        html_parts.append(dicts_to_html_table(self.results.get("appbadgeupdated_data", []), "AppBadgeUpdated Data"))
+        
+        # Add tables with unique IDs
+        html_parts.append(dicts_to_html_table(self.results.get("featureusage_data", []), "FeatureUsage Data", "featureusage-table"))
+        html_parts.append(dicts_to_html_table(self.results.get("appswitched_data", []), "AppSwitched Data (All)", "appswitched-table"))
+        html_parts.append(dicts_to_html_table(self.results.get("advanced_appswitched_data", []), "Advanced AppSwitched Data", "advanced-appswitched-table"))
+        html_parts.append(dicts_to_html_table(self.results.get("showjumpview_data", []), "ShowJumpView Data", "showjumpview-table"))
+        html_parts.append(dicts_to_html_table(self.results.get("appbadgeupdated_data", []), "AppBadgeUpdated Data", "appbadgeupdated-table"))
+        
         html_parts.append('</body></html>')
 
         html_content = '\n'.join(html_parts)
