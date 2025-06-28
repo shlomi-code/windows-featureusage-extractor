@@ -33,7 +33,8 @@ class FeatureUsageExtractor:
             "appswitched_data": [],
             "advanced_appswitched_data": [],
             "showjumpview_data": [],
-            "appbadgeupdated_data": []
+            "appbadgeupdated_data": [],
+            "applaunch_data": []
         }
     
     def _get_current_user_sid(self) -> str:
@@ -605,6 +606,70 @@ class FeatureUsageExtractor:
             print(f"Error extracting AppBadgeUpdated data: {e}")
             return []
     
+    def extract_applaunch_data(self) -> List[Dict[str, Any]]:
+        """Extract AppLaunch FeatureUsage data."""
+        print("Extracting AppLaunch FeatureUsage data...")
+        applaunch_path = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FeatureUsage\\AppLaunch"
+        entries = []
+        try:
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, applaunch_path)
+            try:
+                value_count, subkey_count, _ = winreg.QueryInfoKey(key)
+                print(f"  Registry key info: {value_count} values, {subkey_count} subkeys")
+            except Exception as e:
+                print(f"  Warning: Could not get key info: {e}")
+                value_count = 0
+            if value_count == 0:
+                print("  ⚠️  No values found in AppLaunch registry key")
+            i = 0
+            while True:
+                try:
+                    value_name, value_data, value_type = winreg.EnumValue(key, i)
+                    print(f"  Found value: {value_name} (type: {value_type}, size: {len(value_data) if isinstance(value_data, bytes) else len(str(value_data))})")
+                    if value_type == winreg.REG_DWORD and isinstance(value_data, int):
+                        entry = {
+                            "timestamp": datetime.now().isoformat(),
+                            "app_identifier": value_name,
+                            "launch_count": value_data,
+                            "raw_value": value_data,
+                            "value_type": "REG_DWORD",
+                            "source": "AppLaunch",
+                            "value_name": value_name,
+                            "raw_data_size": 4
+                        }
+                        if value_name.endswith(".exe"):
+                            entry["entry_type"] = "Executable"
+                            entry["executable_path"] = value_name
+                        elif "!" in value_name:
+                            entry["entry_type"] = "UWP_App"
+                            entry["app_package"] = value_name
+                        elif "PID" in value_name:
+                            entry["entry_type"] = "Process_ID"
+                            try:
+                                pid = value_name.replace("*PID", "").replace("0000", "")
+                                entry["process_id"] = int(pid, 16) if pid else None
+                            except:
+                                entry["process_id"] = None
+                        else:
+                            entry["entry_type"] = "Application"
+                            entry["app_name"] = value_name
+                        entries.append(entry)
+                        print(f"    Parsed DWORD entry: {entry['entry_type']} - {entry['app_identifier']} (Launches: {entry['launch_count']})")
+                    else:
+                        print(f"    Skipping non-dword value (type: {value_type})")
+                    i += 1
+                except WindowsError:
+                    break
+            winreg.CloseKey(key)
+            if not entries:
+                print("  ℹ️  No AppLaunch data extracted.")
+            else:
+                print(f"  ✓ Successfully extracted {len(entries)} AppLaunch entries")
+            return entries
+        except Exception as e:
+            print(f"Error extracting AppLaunch data: {e}")
+            return []
+    
     def extract_all_data(self) -> Dict[str, Any]:
         """Extract all FeatureUsage data from registry."""
         print("Starting FeatureUsage artifact extraction...")
@@ -619,6 +684,7 @@ class FeatureUsageExtractor:
         taskbar_data = self.extract_taskbar_data()
         showjumpview_data = self.extract_showjumpview_data()
         appbadgeupdated_data = self.extract_appbadgeupdated_data()
+        applaunch_data = self.extract_applaunch_data()
         
         # Check for alternative sources if no AppSwitched data found
         if not appswitched_data and not appswitched_advanced_data and not taskbar_data:
@@ -630,7 +696,7 @@ class FeatureUsageExtractor:
                 self.provide_test_data_suggestions()
         
         # Combine all data
-        all_data = appswitched_data + startmenu_data + search_data + showjumpview_data + appbadgeupdated_data
+        all_data = appswitched_data + startmenu_data + search_data + showjumpview_data + appbadgeupdated_data + applaunch_data
         all_appswitched_data = appswitched_data + appswitched_advanced_data + taskbar_data
         
         # Sort by timestamp
@@ -642,6 +708,7 @@ class FeatureUsageExtractor:
         self.results["advanced_appswitched_data"] = appswitched_advanced_data + taskbar_data
         self.results["showjumpview_data"] = showjumpview_data
         self.results["appbadgeupdated_data"] = appbadgeupdated_data
+        self.results["applaunch_data"] = applaunch_data
         self.results["total_entries"] = len(all_data)
         self.results["appswitched_entries"] = len(all_appswitched_data)
         self.results["summary"] = {
@@ -652,6 +719,7 @@ class FeatureUsageExtractor:
             "search_entries": len(search_data),
             "showjumpview_entries": len(showjumpview_data),
             "appbadgeupdated_entries": len(appbadgeupdated_data),
+            "applaunch_entries": len(applaunch_data),
             "total_appswitched_entries": len(all_appswitched_data)
         }
         
@@ -664,6 +732,7 @@ class FeatureUsageExtractor:
         print(f"Search entries: {len(search_data)}")
         print(f"ShowJumpView entries: {len(showjumpview_data)}")
         print(f"AppBadgeUpdated entries: {len(appbadgeupdated_data)}")
+        print(f"AppLaunch entries: {len(applaunch_data)}")
         print(f"Total AppSwitched-related entries: {len(all_appswitched_data)}")
         
         # Provide additional feedback if no AppSwitched data
@@ -719,8 +788,14 @@ class FeatureUsageExtractor:
             # Show first few entries
             for i, entry in enumerate(entries[:5]):
                 timestamp = entry.get("timestamp", "Unknown")
-                app_id = entry.get("app_id", "Unknown")
-                usage_count = entry.get("usage_count", "Unknown")
+                app_id = entry.get("app_identifier", "Unknown")
+                # Handle different field names for different sources
+                if source == "AppLaunch":
+                    usage_count = entry.get("launch_count", "Unknown")
+                elif source == "AppBadgeUpdated":
+                    usage_count = entry.get("badge_count", "Unknown")
+                else:
+                    usage_count = entry.get("usage_count", "Unknown")
                 print(f"  {i+1}. {timestamp} - App ID: {app_id}, Usage: {usage_count}")
             
             if len(entries) > 5:
@@ -1056,6 +1131,7 @@ class FeatureUsageExtractor:
         html_parts.append(dicts_to_html_table(self.results.get("advanced_appswitched_data", []), "Advanced AppSwitched Data", "advanced-appswitched-table"))
         html_parts.append(dicts_to_html_table(self.results.get("showjumpview_data", []), "ShowJumpView Data", "showjumpview-table"))
         html_parts.append(dicts_to_html_table(self.results.get("appbadgeupdated_data", []), "AppBadgeUpdated Data", "appbadgeupdated-table"))
+        html_parts.append(dicts_to_html_table(self.results.get("applaunch_data", []), "AppLaunch Data", "applaunch-table"))
         
         html_parts.append('</body></html>')
 
