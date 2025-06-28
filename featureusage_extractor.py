@@ -35,7 +35,9 @@ class FeatureUsageExtractor:
             "advanced_appswitched_data": [],
             "showjumpview_data": [],
             "appbadgeupdated_data": [],
-            "applaunch_data": []
+            "applaunch_data": [],
+            "startmenu_data": [],
+            "search_data": []
         }
     
     def _get_current_user_sid(self) -> str:
@@ -949,225 +951,273 @@ class FeatureUsageExtractor:
 
         def dicts_to_html_table(dicts, title, table_id):
             if not dicts:
-                return f'<div class="table-section"><div class="table-header" onclick="toggleTable(\'{table_id}\')"><span class="toggle-icon">▶</span> {title} <span class="entry-count">(No data found)</span></div><div id="{table_id}-content" class="table-content collapsed"><p>No data found.</p></div></div>'
+                return f'''
+                <div class="table-section">
+                    <div class="table-header" onclick="toggleTable('{table_id}')">
+                        <span class="toggle-icon">▶</span> {title} <span class="entry-count">(No data found)</span>
+                    </div>
+                    <div id="{table_id}-content" class="table-content collapsed">
+                        <p>No data found.</p>
+                    </div>
+                </div>'''
             
             headers = sorted({k for d in dicts for k in d.keys()})
-            html = [
-                f'<div class="table-section">',
-                f'<div class="table-header" onclick="toggleTable(\'{table_id}\')"><span class="toggle-icon">▶</span> {title} <span class="entry-count">({len(dicts)} entries)</span></div>',
-                f'<div id="{table_id}-content" class="table-content collapsed">',
-                f'<table id="{table_id}" border="1" cellspacing="0" cellpadding="4" class="data-table">'
-            ]
-            html.append('<tr>' + ''.join(f'<th>{h}</th>' for h in headers) + '</tr>')
+            table_html = f'''
+                <div class="table-section">
+                    <div class="table-header" onclick="toggleTable('{table_id}')">
+                        <span class="toggle-icon">▶</span> {title} <span class="entry-count">({len(dicts)} entries)</span>
+                    </div>
+                    <div id="{table_id}-content" class="table-content collapsed">
+                        <table id="{table_id}" border="1" cellspacing="0" cellpadding="4" class="data-table">
+                            <tr>'''
+            
+            for h in headers:
+                table_html += f'<th>{h}</th>'
+            table_html += '</tr>'
+            
             for d in dicts:
-                html.append('<tr>' + ''.join(f'<td>{d.get(h, "")}</td>' for h in headers) + '</tr>')
-            html.append('</table></div></div>')
-            return '\n'.join(html)
+                table_html += '<tr>'
+                for h in headers:
+                    table_html += f'<td>{d.get(h, "")}</td>'
+                table_html += '</tr>'
+            
+            table_html += '''
+                        </table>
+                    </div>
+                </div>'''
+            return table_html
 
-        html_parts = [
-            '<!DOCTYPE html>',
-            '<html lang="en">',
-            '<head>',
-            '<meta charset="UTF-8">',
-            '<title>Windows FeatureUsage Extraction Report</title>',
-            '<style>',
-            'body{font-family:sans-serif;margin:20px;}',
-            'table{border-collapse:collapse;margin:20px 0;}',
-            'th,td{padding:8px 12px;text-align:left;border:1px solid #ddd;}',
-            'th{background:#f2f2f2;font-weight:bold;}',
-            'tr:nth-child(even){background-color:#f9f9f9;}',
-            'tr:hover{background-color:#f5f5f5;}',
-            '.search-container{margin:20px 0;padding:15px;background:#f8f9fa;border-radius:5px;}',
-            '.search-input{width:300px;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:14px;}',
-            '.search-button{padding:8px 16px;background:#007bff;color:white;border:none;border-radius:4px;cursor:pointer;margin-left:10px;}',
-            '.search-button:hover{background:#0056b3;}',
-            '.clear-button{padding:8px 16px;background:#6c757d;color:white;border:none;border-radius:4px;cursor:pointer;margin-left:10px;}',
-            '.clear-button:hover{background:#545b62;}',
-            '.stats{margin:10px 0;font-size:14px;color:#666;}',
-            '.hidden{display:none;}',
-            '.highlight{background-color:#fff3cd;font-weight:bold;}',
-            '.no-results{color:#dc3545;font-style:italic;padding:10px;background:#f8d7da;border:1px solid #f5c6cb;border-radius:4px;margin:10px 0;}',
-            '.table-section{margin:15px 0;border:1px solid #ddd;border-radius:5px;overflow:hidden;}',
-            '.table-header{background:#e9ecef;padding:12px 15px;cursor:pointer;font-weight:bold;font-size:16px;border-bottom:1px solid #ddd;transition:background-color 0.2s;}',
-            '.table-header:hover{background:#d1ecf1;}',
-            '.toggle-icon{display:inline-block;margin-right:10px;font-size:12px;transition:transform 0.2s;}',
-            '.entry-count{float:right;font-size:14px;color:#6c757d;font-weight:normal;}',
-            '.table-content{padding:15px;background:white;transition:max-height 0.3s ease-out;overflow:hidden;}',
-            '.table-content.collapsed{max-height:0;padding:0 15px;}',
-            '.table-content.expanded{max-height:2000px;}',
-            '</style>',
-            '</head>',
-            '<body>',
-            f'<h1>Windows FeatureUsage Extraction Report</h1>',
-            f'<p><strong>Extraction time:</strong> {self.results.get("extraction_time", "")}</p>',
-            f'<p><strong>Current User SID:</strong> {self.results.get("current_user_sid", "")}</p>',
-            f'<p><strong>Total entries:</strong> {self.results.get("total_entries", 0)}</p>',
-            f'<p><strong>Summary:</strong> {self.results.get("summary", {})}</p>',
-            
-            # Search functionality
-            '<div class="search-container">',
-            '<h3>🔍 Search Data</h3>',
-            '<input type="text" id="searchInput" class="search-input" placeholder="Search for applications, timestamps, or any data...">',
-            '<button onclick="searchData()" class="search-button">Search</button>',
-            '<button onclick="clearSearch()" class="clear-button">Clear</button>',
-            '<div class="stats" id="searchStats"></div>',
-            '<div id="noResultsMessage" class="no-results" style="display:none;">No results found for your search. Try a shorter or different search term.</div>',
-            '</div>',
-            
-            # JavaScript for search functionality
-            '<script>',
-            'function toggleTable(tableId) {',
-            '    const content = document.getElementById(tableId + "-content");',
-            '    const header = content.previousElementSibling;',
-            '    const icon = header.querySelector(".toggle-icon");',
-            '    ',
-            '    if (content.classList.contains("collapsed")) {',
-            '        content.classList.remove("collapsed");',
-            '        content.classList.add("expanded");',
-            '        icon.textContent = "▼";',
-            '    } else {',
-            '        content.classList.remove("expanded");',
-            '        content.classList.add("collapsed");',
-            '        icon.textContent = "▶";',
-            '    }',
-            '}',
-            '',
-            'function searchData() {',
-            '    const searchTerm = document.getElementById("searchInput").value.toLowerCase().trim();',
-            '    const tables = document.querySelectorAll(".data-table");',
-            '    const noResultsDiv = document.getElementById("noResultsMessage");',
-            '    let totalMatches = 0;',
-            '    let totalRows = 0;',
-            '    let tablesWithMatches = 0;',
-            '',
-            '    // Hide no results message initially',
-            '    noResultsDiv.style.display = "none";',
-            '',
-            '    if (!searchTerm) {',
-            '        clearSearch();',
-            '        return;',
-            '    }',
-            '',
-            '    tables.forEach(table => {',
-            '        const rows = table.querySelectorAll("tr");',
-            '        let tableMatches = 0;',
-            '        let visibleRows = 0;',
-            '',
-            '        rows.forEach((row, index) => {',
-            '            if (index === 0) {',
-            '                // Always show header row',
-            '                row.style.display = "";',
-            '                return;',
-            '            }',
-            '            totalRows++;',
-            '            const cells = row.querySelectorAll("td");',
-            '            let rowMatch = false;',
-            '',
-            '            cells.forEach(cell => {',
-            '                const cellText = cell.textContent.toLowerCase();',
-            '                if (cellText.includes(searchTerm)) {',
-            '                    rowMatch = true;',
-            '                    cell.classList.add("highlight");',
-            '                } else {',
-            '                    cell.classList.remove("highlight");',
-            '                }',
-            '            });',
-            '',
-            '            if (rowMatch) {',
-            '                row.style.display = "";',
-            '                tableMatches++;',
-            '                totalMatches++;',
-            '                visibleRows++;',
-            '            } else {',
-            '                row.style.display = "none";',
-            '            }',
-            '        });',
-            '',
-            '        // Handle table visibility and expansion',
-            '        const tableSection = table.closest(".table-section");',
-            '        const tableContent = tableSection.querySelector(".table-content");',
-            '        const tableHeader = tableSection.querySelector(".table-header");',
-            '        ',
-            '        if (tableMatches > 0) {',
-            '            tablesWithMatches++;',
-            '            tableSection.style.display = "block";',
-            '            // Expand table if it has matches',
-            '            if (tableContent.classList.contains("collapsed")) {',
-            '                toggleTable(table.id);',
-            '            }',
-            '            // Remove any existing no-results indicator',
-            '            const existingIndicator = tableSection.querySelector(".no-results-indicator");',
-            '            if (existingIndicator) {',
-            '                existingIndicator.remove();',
-            '            }',
-            '        } else {',
-            '            // Hide table section if no matches',
-            '            tableSection.style.display = "none";',
-            '        }',
-            '    });',
-            '',
-            '    // Update search stats',
-            '    const statsDiv = document.getElementById("searchStats");',
-            '    if (searchTerm) {',
-            '        if (totalMatches > 0) {',
-            '            statsDiv.innerHTML = `Found ${totalMatches} matches out of ${totalRows} total entries in ${tablesWithMatches} table(s)`;',
-            '        } else {',
-            '            statsDiv.innerHTML = `No matches found in any table`;',
-            '            noResultsDiv.style.display = "block";',
-            '        }',
-            '    } else {',
-            '        statsDiv.innerHTML = "";',
-            '    }',
-            '}',
-            '',
-            'function clearSearch() {',
-            '    document.getElementById("searchInput").value = "";',
-            '    document.getElementById("searchStats").innerHTML = "";',
-            '    document.getElementById("noResultsMessage").style.display = "none";',
-            '    const tables = document.querySelectorAll(".data-table");',
-            '    tables.forEach(table => {',
-            '        const rows = table.querySelectorAll("tr");',
-            '        rows.forEach(row => {',
-            '            row.style.display = "";',
-            '            const cells = row.querySelectorAll("td");',
-            '            cells.forEach(cell => cell.classList.remove("highlight"));',
-            '        });',
-            '        // Show all table sections',
-            '        const tableSection = table.closest(".table-section");',
-            '        tableSection.style.display = "block";',
-            '        // Remove any no-results indicators',
-            '        const indicators = tableSection.querySelectorAll(".no-results-indicator");',
-            '        indicators.forEach(indicator => indicator.remove());',
-            '    });',
-            '}',
-            '',
-            '// Enable search on Enter key',
-            'document.getElementById("searchInput").addEventListener("keypress", function(event) {',
-            '    if (event.key === "Enter") {',
-            '        searchData();',
-            '    }',
-            '});',
-            '',
-            '// Enable real-time search as you type (with debouncing)',
-            'let searchTimeout;',
-            'document.getElementById("searchInput").addEventListener("input", function() {',
-            '    clearTimeout(searchTimeout);',
-            '    searchTimeout = setTimeout(searchData, 300); // Search after 300ms of no typing',
-            '});',
-            '</script>',
+        # Prepare chart data
+        chart_data = [
+            ("AppSwitched", len(self.results.get("appswitched_data", []))),
+            ("Advanced AppSwitched", len(self.results.get("advanced_appswitched_data", []))),
+            ("ShowJumpView", len(self.results.get("showjumpview_data", []))),
+            ("AppBadgeUpdated", len(self.results.get("appbadgeupdated_data", []))),
+            ("AppLaunch", len(self.results.get("applaunch_data", []))),
+            ("StartMenu", len(self.results.get("startmenu_data", []))),
+            ("Search", len(self.results.get("search_data", [])))
         ]
         
-        # Add tables with unique IDs
-        html_parts.append(dicts_to_html_table(self.results.get("featureusage_data", []), "FeatureUsage Data", "featureusage-table"))
-        html_parts.append(dicts_to_html_table(self.results.get("appswitched_data", []), "AppSwitched Data (All)", "appswitched-table"))
-        html_parts.append(dicts_to_html_table(self.results.get("advanced_appswitched_data", []), "Advanced AppSwitched Data", "advanced-appswitched-table"))
-        html_parts.append(dicts_to_html_table(self.results.get("showjumpview_data", []), "ShowJumpView Data", "showjumpview-table"))
-        html_parts.append(dicts_to_html_table(self.results.get("appbadgeupdated_data", []), "AppBadgeUpdated Data", "appbadgeupdated-table"))
-        html_parts.append(dicts_to_html_table(self.results.get("applaunch_data", []), "AppLaunch Data", "applaunch-table"))
+        # Filter out zero counts and sort by count
+        chart_data = [(name, count) for name, count in chart_data if count > 0]
+        chart_data.sort(key=lambda x: x[1], reverse=True)
         
-        html_parts.append('</body></html>')
+        # Generate chart HTML
+        chart_html = ""
+        if chart_data:
+            max_count = max(count for _, count in chart_data)
+            for name, count in chart_data:
+                percentage = (count / max_count) * 100 if max_count > 0 else 0
+                chart_html += f'''
+                <div class="chart-bar-container">
+                    <div class="chart-label">{name}</div>
+                    <div class="chart-bar-wrapper">
+                        <div class="chart-bar" style="width: {percentage}%;">
+                            <span class="chart-value">{count}</span>
+                        </div>
+                    </div>
+                    <div class="chart-max-label">{max_count}</div>
+                </div>'''
+        else:
+            chart_html = '<p style="text-align:center;color:#6c757d;font-style:italic;">No data available for chart</p>'
 
-        html_content = '\n'.join(html_parts)
+        html_content = f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Windows FeatureUsage Extraction Report</title>
+    <style>
+        body {{ font-family: sans-serif; margin: 20px; }}
+        table {{ border-collapse: collapse; margin: 20px 0; }}
+        th, td {{ padding: 8px 12px; text-align: left; border: 1px solid #ddd; }}
+        th {{ background: #f2f2f2; font-weight: bold; }}
+        tr:nth-child(even) {{ background-color: #f9f9f9; }}
+        tr:hover {{ background-color: #f5f5f5; }}
+        
+        .search-container {{ margin: 20px 0; padding: 15px; background: #f8f9fa; border-radius: 5px; }}
+        .search-input {{ width: 300px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }}
+        .search-button {{ padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; margin-left: 10px; }}
+        .search-button:hover {{ background: #0056b3; }}
+        .clear-button {{ padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; margin-left: 10px; }}
+        .clear-button:hover {{ background: #545b62; }}
+        .stats {{ margin: 10px 0; font-size: 14px; color: #666; }}
+        .hidden {{ display: none; }}
+        .highlight {{ background-color: #fff3cd; font-weight: bold; }}
+        .no-results {{ color: #dc3545; font-style: italic; padding: 10px; background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px; margin: 10px 0; }}
+        
+        .table-section {{ margin: 15px 0; border: 1px solid #ddd; border-radius: 5px; overflow: hidden; }}
+        .table-header {{ background: #e9ecef; padding: 12px 15px; cursor: pointer; font-weight: bold; font-size: 16px; border-bottom: 1px solid #ddd; transition: background-color 0.2s; }}
+        .table-header:hover {{ background: #d1ecf1; }}
+        .toggle-icon {{ display: inline-block; margin-right: 10px; font-size: 12px; transition: transform 0.2s; }}
+        .entry-count {{ float: right; font-size: 14px; color: #6c757d; font-weight: normal; }}
+        .table-content {{ padding: 15px; background: white; transition: all 0.3s ease-out; overflow: hidden; }}
+        .table-content.collapsed {{ max-height: 0; padding: 0 15px; opacity: 0; }}
+        .table-content.expanded {{ max-height: 2000px; opacity: 1; }}
+        
+        .chart-container {{ margin: 20px 0; padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #dee2e6; }}
+        .chart-title {{ font-size: 18px; font-weight: bold; margin-bottom: 15px; color: #495057; }}
+        .chart-bar-container {{ margin: 10px 0; display: flex; align-items: center; }}
+        .chart-label {{ width: 200px; font-weight: bold; color: #495057; margin-right: 15px; }}
+        .chart-bar-wrapper {{ flex: 1; background: #e9ecef; border-radius: 4px; height: 25px; position: relative; overflow: hidden; }}
+        .chart-bar {{ height: 100%; background: linear-gradient(90deg, #007bff, #0056b3); border-radius: 4px; transition: width 0.5s ease-in-out; position: relative; }}
+        .chart-value {{ position: absolute; right: 8px; top: 50%; transform: translateY(-50%); color: white; font-weight: bold; font-size: 12px; }}
+        .chart-max-label {{ width: 60px; text-align: right; font-size: 12px; color: #6c757d; margin-left: 10px; }}
+    </style>
+</head>
+<body>
+    <h1>Windows FeatureUsage Extraction Report</h1>
+    <p><strong>Extraction time:</strong> {self.results.get("extraction_time", "")}</p>
+    <p><strong>Current User SID:</strong> {self.results.get("current_user_sid", "")}</p>
+    <p><strong>Total entries:</strong> {self.results.get("total_entries", 0)}</p>
+    <p><strong>Summary:</strong> {self.results.get("summary", {})}</p>
+    
+    <!-- Chart container -->
+    <div class="chart-container">
+        <div class="chart-title">📊 Artifact Distribution</div>
+        {chart_html}
+    </div>
+    
+    <!-- Search functionality -->
+    <div class="search-container">
+        <h3>🔍 Search Data</h3>
+        <input type="text" id="searchInput" class="search-input" placeholder="Search for applications, timestamps, or any data...">
+        <button onclick="searchData()" class="search-button">Search</button>
+        <button onclick="clearSearch()" class="clear-button">Clear</button>
+        <div class="stats" id="searchStats"></div>
+        <div id="noResultsMessage" class="no-results" style="display:none;">No results found for your search. Try a shorter or different search term.</div>
+    </div>
+    
+    <script>
+        function toggleTable(tableId) {{
+            const content = document.getElementById(tableId + "-content");
+            const header = content.previousElementSibling;
+            const icon = header.querySelector(".toggle-icon");
+            
+            if (content.classList.contains("collapsed")) {{
+                content.classList.remove("collapsed");
+                content.classList.add("expanded");
+                icon.textContent = "▼";
+            }} else {{
+                content.classList.remove("expanded");
+                content.classList.add("collapsed");
+                icon.textContent = "▶";
+            }}
+        }}
+        
+        function searchData() {{
+            const searchTerm = document.getElementById("searchInput").value.toLowerCase().trim();
+            const tables = document.querySelectorAll(".data-table");
+            const noResultsDiv = document.getElementById("noResultsMessage");
+            let totalMatches = 0;
+            let totalRows = 0;
+            let tablesWithMatches = 0;
+            
+            noResultsDiv.style.display = "none";
+            
+            if (!searchTerm) {{
+                clearSearch();
+                return;
+            }}
+            
+            tables.forEach(table => {{
+                const rows = table.querySelectorAll("tr");
+                let tableMatches = 0;
+                
+                rows.forEach((row, index) => {{
+                    if (index === 0) {{
+                        row.style.display = "";
+                        return;
+                    }}
+                    totalRows++;
+                    const cells = row.querySelectorAll("td");
+                    let rowMatch = false;
+                    
+                    cells.forEach(cell => {{
+                        const cellText = cell.textContent.toLowerCase();
+                        if (cellText.includes(searchTerm)) {{
+                            rowMatch = true;
+                            cell.classList.add("highlight");
+                        }} else {{
+                            cell.classList.remove("highlight");
+                        }}
+                    }});
+                    
+                    if (rowMatch) {{
+                        row.style.display = "";
+                        tableMatches++;
+                        totalMatches++;
+                    }} else {{
+                        row.style.display = "none";
+                    }}
+                }});
+                
+                const tableSection = table.closest(".table-section");
+                const tableContent = tableSection.querySelector(".table-content");
+                
+                if (tableMatches > 0) {{
+                    tablesWithMatches++;
+                    tableSection.style.display = "block";
+                    if (tableContent.classList.contains("collapsed")) {{
+                        toggleTable(table.id);
+                    }}
+                }} else {{
+                    tableSection.style.display = "none";
+                }}
+            }});
+            
+            const statsDiv = document.getElementById("searchStats");
+            if (searchTerm) {{
+                if (totalMatches > 0) {{
+                    statsDiv.innerHTML = `Found ${{totalMatches}} matches out of ${{totalRows}} total entries in ${{tablesWithMatches}} table(s)`;
+                }} else {{
+                    statsDiv.innerHTML = `No matches found in any table`;
+                    noResultsDiv.style.display = "block";
+                }}
+            }} else {{
+                statsDiv.innerHTML = "";
+            }}
+        }}
+        
+        function clearSearch() {{
+            document.getElementById("searchInput").value = "";
+            document.getElementById("searchStats").innerHTML = "";
+            document.getElementById("noResultsMessage").style.display = "none";
+            const tables = document.querySelectorAll(".data-table");
+            tables.forEach(table => {{
+                const rows = table.querySelectorAll("tr");
+                rows.forEach(row => {{
+                    row.style.display = "";
+                    const cells = row.querySelectorAll("td");
+                    cells.forEach(cell => cell.classList.remove("highlight"));
+                }});
+                const tableSection = table.closest(".table-section");
+                tableSection.style.display = "block";
+            }});
+        }}
+        
+        document.getElementById("searchInput").addEventListener("keypress", function(event) {{
+            if (event.key === "Enter") {{
+                searchData();
+            }}
+        }});
+        
+        let searchTimeout;
+        document.getElementById("searchInput").addEventListener("input", function() {{
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(searchData, 300);
+        }});
+    </script>
+    
+    {dicts_to_html_table(self.results.get("featureusage_data", []), "FeatureUsage Data", "featureusage-table")}
+    {dicts_to_html_table(self.results.get("appswitched_data", []), "AppSwitched Data (All)", "appswitched-table")}
+    {dicts_to_html_table(self.results.get("advanced_appswitched_data", []), "Advanced AppSwitched Data", "advanced-appswitched-table")}
+    {dicts_to_html_table(self.results.get("showjumpview_data", []), "ShowJumpView Data", "showjumpview-table")}
+    {dicts_to_html_table(self.results.get("appbadgeupdated_data", []), "AppBadgeUpdated Data", "appbadgeupdated-table")}
+    {dicts_to_html_table(self.results.get("applaunch_data", []), "AppLaunch Data", "applaunch-table")}
+    
+</body>
+</html>'''
+
         try:
             with open(filename, 'w', encoding='utf-8') as f:
                 f.write(html_content)
