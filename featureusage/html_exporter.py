@@ -200,8 +200,9 @@ class HTMLExporter:
                     <span class="toggle-icon">▶</span> {title} <span class="entry-count">({len(dicts)} entries)</span>
                 </div>
                 <div id="{table_id}-content" class="table-content collapsed">
-                    <table id="{table_id}" border="1" cellspacing="0" cellpadding="4" class="data-table">
-                        <tr>'''
+                    <div class="table-wrapper">
+                        <table id="{table_id}" border="1" cellspacing="0" cellpadding="4" class="data-table">
+                            <tr>'''
         
         for h in headers:
             table_html += f'<th>{h}</th>'
@@ -215,7 +216,8 @@ class HTMLExporter:
             table_html += '</tr>'
         
         table_html += '''
-                    </table>
+                        </table>
+                    </div>
                 </div>
             </div>'''
         return table_html
@@ -254,6 +256,9 @@ class HTMLExporter:
         .table-content { padding: 15px; background: white; transition: all 0.3s ease-out; overflow: hidden; }
         .table-content.collapsed { max-height: 0; padding: 0 15px; opacity: 0; }
         .table-content.expanded { max-height: 2000px; opacity: 1; }
+        
+        .table-wrapper { overflow-x: scroll; overflow-y: auto; max-width: 100%; max-height: 400px; }
+        .data-table { min-width: 1200px; }
         
         .chart-container { margin: 20px 0; padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #dee2e6; }
         .chart-title { font-size: 18px; font-weight: bold; margin-bottom: 15px; color: #495057; }
