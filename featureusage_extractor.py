@@ -38,7 +38,6 @@ class FeatureUsageExtractor:
             "current_user_sid": self.current_user_sid,
             "featureusage_data": [],
             "appswitched_data": [],
-            "advanced_appswitched_data": [],
             "showjumpview_data": [],
             "appbadgeupdated_data": [],
             "applaunch_data": [],
@@ -138,73 +137,7 @@ class FeatureUsageExtractor:
         
         return entries
     
-    def _parse_appswitched_advanced_data(self, data: bytes, value_name: str) -> List[Dict[str, Any]]:
-        """Parse advanced AppSwitched data structure with more detailed information."""
-        entries = []
-        
-        if not data or len(data) < 4:
-            return entries
-        
-        try:
-            # AppSwitched data structure may vary, try different parsing approaches
-            offset = 0
-            
-            # Check if data starts with a count or header
-            if len(data) >= 4:
-                possible_count = struct.unpack('<I', data[offset:offset + 4])[0]
-                offset += 4
-                
-                # If count seems reasonable, use it
-                if 0 <= possible_count <= 10000:
-                    entry_count = possible_count
-                else:
-                    # Reset and try different approach
-                    offset = 0
-                    entry_count = None
-            
-            # Parse entries
-            while offset < len(data):
-                if offset + 12 > len(data):  # Minimum entry size
-                    break
-                
-                try:
-                    # Read timestamp (8 bytes, FILETIME)
-                    if offset + 8 <= len(data):
-                        timestamp_bytes = data[offset:offset + 8]
-                        timestamp = struct.unpack('<Q', timestamp_bytes)[0]
-                        
-                        # Convert FILETIME to datetime
-                        windows_tick = timestamp / 10_000_000
-                        unix_timestamp = windows_tick - 11644473600
-                        entry_time = datetime.fromtimestamp(unix_timestamp)
-                        
-                        offset += 8
-                        
-                        # Read additional data (4 bytes - could be app ID, flags, etc.)
-                        if offset + 4 <= len(data):
-                            additional_data = struct.unpack('<I', data[offset:offset + 4])[0]
-                            offset += 4
-                            
-                            entries.append({
-                                "timestamp": entry_time.isoformat(),
-                                "raw_timestamp": timestamp,
-                                "additional_data": additional_data,
-                                "value_name": value_name,
-                                "data_offset": offset - 12
-                            })
-                        else:
-                            break
-                    else:
-                        break
-                        
-                except Exception as e:
-                    print(f"Error parsing AppSwitched entry at offset {offset}: {e}")
-                    break
-                    
-        except Exception as e:
-            print(f"Error parsing advanced AppSwitched data: {e}")
-        
-        return entries
+
     
     def _parse_dword_appswitched_data(self, value_name: str, value_data: int) -> Dict[str, Any]:
         """Parse DWORD AppSwitched data structure."""
@@ -326,51 +259,7 @@ class FeatureUsageExtractor:
             print(f"Error extracting AppSwitched data: {e}")
             return []
     
-    def extract_appswitched_advanced(self) -> List[Dict[str, Any]]:
-        """Extract advanced AppSwitched data with detailed analysis."""
-        print("Extracting advanced AppSwitched data...")
-        
-        advanced_entries = []
-        
-        # Additional AppSwitched-related registry locations
-        appswitched_locations = [
-            "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FeatureUsage\\AppSwitched",
-            "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\\People",
-            "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\\TaskbarAl"
-        ]
-        
-        for location in appswitched_locations:
-            try:
-                key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, location)
-                
-                # Enumerate all values
-                i = 0
-                while True:
-                    try:
-                        value_name, value_data, value_type = winreg.EnumValue(key, i)
-                        
-                        if value_type == winreg.REG_BINARY:
-                            parsed_entries = self._parse_appswitched_advanced_data(value_data, value_name)
-                            
-                            for entry in parsed_entries:
-                                entry["source"] = "AppSwitched_Advanced"
-                                entry["registry_location"] = location
-                                entry["value_type"] = "REG_BINARY"
-                                entry["raw_data_size"] = len(value_data)
-                            
-                            advanced_entries.extend(parsed_entries)
-                        
-                        i += 1
-                        
-                    except WindowsError:
-                        break
-                
-                winreg.CloseKey(key)
-                
-            except Exception as e:
-                print(f"Error accessing {location}: {e}")
-        
-        return advanced_entries
+
     
     def extract_startmenu_data(self) -> List[Dict[str, Any]]:
         """Extract StartMenu FeatureUsage data."""
@@ -454,49 +343,7 @@ class FeatureUsageExtractor:
             print(f"Error extracting Search data: {e}")
             return []
     
-    def extract_taskbar_data(self) -> List[Dict[str, Any]]:
-        """Extract Taskbar-related AppSwitched data."""
-        print("Extracting Taskbar AppSwitched data...")
-        
-        taskbar_locations = [
-            "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\\People",
-            "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\\TaskbarAl"
-        ]
-        
-        entries = []
-        
-        for location in taskbar_locations:
-            try:
-                key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, location)
-                
-                # Enumerate all values
-                i = 0
-                while True:
-                    try:
-                        value_name, value_data, value_type = winreg.EnumValue(key, i)
-                        
-                        if value_type == winreg.REG_BINARY:
-                            parsed_entries = self._parse_appswitched_advanced_data(value_data, value_name)
-                            
-                            for entry in parsed_entries:
-                                entry["source"] = "Taskbar_AppSwitched"
-                                entry["registry_location"] = location
-                                entry["value_type"] = "REG_BINARY"
-                                entry["raw_data_size"] = len(value_data)
-                            
-                            entries.extend(parsed_entries)
-                        
-                        i += 1
-                        
-                    except WindowsError:
-                        break
-                
-                winreg.CloseKey(key)
-                
-            except Exception as e:
-                print(f"Error accessing {location}: {e}")
-        
-        return entries
+
     
     def extract_showjumpview_data(self) -> List[Dict[str, Any]]:
         """Extract ShowJumpView FeatureUsage data."""
@@ -691,16 +538,14 @@ class FeatureUsageExtractor:
         
         # Extract data from different FeatureUsage sources
         appswitched_data = self.extract_appswitched_data()
-        appswitched_advanced_data = self.extract_appswitched_advanced()
         startmenu_data = self.extract_startmenu_data()
         search_data = self.extract_search_data()
-        taskbar_data = self.extract_taskbar_data()
         showjumpview_data = self.extract_showjumpview_data()
         appbadgeupdated_data = self.extract_appbadgeupdated_data()
         applaunch_data = self.extract_applaunch_data()
         
         # Check for alternative sources if no AppSwitched data found
-        if not appswitched_data and not appswitched_advanced_data and not taskbar_data:
+        if not appswitched_data:
             print("\nNo AppSwitched data found - checking alternative sources...")
             alternative_sources = self.check_alternative_appswitched_sources()
             
@@ -710,7 +555,7 @@ class FeatureUsageExtractor:
         
         # Combine all data
         all_data = appswitched_data + startmenu_data + search_data + showjumpview_data + appbadgeupdated_data + applaunch_data
-        all_appswitched_data = appswitched_data + appswitched_advanced_data + taskbar_data
+        all_appswitched_data = appswitched_data
         
         # Sort by timestamp
         all_data.sort(key=lambda x: x.get("timestamp", ""))
@@ -720,14 +565,12 @@ class FeatureUsageExtractor:
         print("\nResolving Windows Known Folder GUIDs and AutoGenerated App IDs...")
         resolved_all_data = self._resolve_guids_in_data(all_data)
         resolved_all_appswitched_data = self._resolve_guids_in_data(all_appswitched_data)
-        resolved_appswitched_advanced_data = self._resolve_guids_in_data(appswitched_advanced_data + taskbar_data)
         resolved_showjumpview_data = self._resolve_guids_in_data(showjumpview_data)
         resolved_appbadgeupdated_data = self._resolve_guids_in_data(appbadgeupdated_data)
         resolved_applaunch_data = self._resolve_guids_in_data(applaunch_data)
         
         self.results["featureusage_data"] = resolved_all_data
         self.results["appswitched_data"] = resolved_all_appswitched_data
-        self.results["advanced_appswitched_data"] = resolved_appswitched_advanced_data
         self.results["showjumpview_data"] = resolved_showjumpview_data
         self.results["appbadgeupdated_data"] = resolved_appbadgeupdated_data
         self.results["applaunch_data"] = resolved_applaunch_data
@@ -735,8 +578,6 @@ class FeatureUsageExtractor:
         self.results["appswitched_entries"] = len(resolved_all_appswitched_data)
         self.results["summary"] = {
             "appswitched_entries": len(appswitched_data),
-            "appswitched_advanced_entries": len(appswitched_advanced_data),
-            "taskbar_entries": len(taskbar_data),
             "startmenu_entries": len(startmenu_data),
             "search_entries": len(search_data),
             "showjumpview_entries": len(showjumpview_data),
@@ -748,8 +589,6 @@ class FeatureUsageExtractor:
         print(f"\nExtraction completed!")
         print(f"Total entries found: {len(resolved_all_data)}")
         print(f"AppSwitched entries: {len(appswitched_data)}")
-        print(f"Advanced AppSwitched entries: {len(appswitched_advanced_data)}")
-        print(f"Taskbar AppSwitched entries: {len(taskbar_data)}")
         print(f"StartMenu entries: {len(startmenu_data)}")
         print(f"Search entries: {len(search_data)}")
         print(f"ShowJumpView entries: {len(showjumpview_data)}")
@@ -1055,7 +894,6 @@ class FeatureUsageExtractor:
         # Prepare chart data
         chart_data = [
             ("AppSwitched", len(self.results.get("appswitched_data", []))),
-            ("Advanced AppSwitched", len(self.results.get("advanced_appswitched_data", []))),
             ("ShowJumpView", len(self.results.get("showjumpview_data", []))),
             ("AppBadgeUpdated", len(self.results.get("appbadgeupdated_data", []))),
             ("AppLaunch", len(self.results.get("applaunch_data", []))),
@@ -1274,8 +1112,7 @@ class FeatureUsageExtractor:
     </script>
     
     {dicts_to_html_table(self.results.get("featureusage_data", []), "FeatureUsage Data", "featureusage-table")}
-    {dicts_to_html_table(self.results.get("appswitched_data", []), "AppSwitched Data (All)", "appswitched-table")}
-    {dicts_to_html_table(self.results.get("advanced_appswitched_data", []), "Advanced AppSwitched Data", "advanced-appswitched-table")}
+    {dicts_to_html_table(self.results.get("appswitched_data", []), "AppSwitched Data", "appswitched-table")}
     {dicts_to_html_table(self.results.get("showjumpview_data", []), "ShowJumpView Data", "showjumpview-table")}
     {dicts_to_html_table(self.results.get("appbadgeupdated_data", []), "AppBadgeUpdated Data", "appbadgeupdated-table")}
     {dicts_to_html_table(self.results.get("applaunch_data", []), "AppLaunch Data", "applaunch-table")}
