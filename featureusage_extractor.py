@@ -25,6 +25,8 @@ import argparse
 from featureusage.guid_resolver import GUIDResolver
 # Import the app resolver
 from featureusage.app_resolver import AppResolver
+# Import the registry access class
+from featureusage.registry_access import RegistryAccess
 
 
 class FeatureUsageExtractor:
@@ -48,32 +50,26 @@ class FeatureUsageExtractor:
         self.guid_resolver = GUIDResolver()
         # Initialize app resolver
         self.app_resolver = AppResolver()
+        # Initialize registry access
+        self.registry = RegistryAccess()
     
     def _get_current_user_sid(self) -> str:
         """Get the SID of the currently running user."""
         try:
             # Get current user SID from registry
-            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FeatureUsage\\AppSwitched")
-            # The key itself contains the SID information
-            return "Current User"
+            key = self.registry.open_key(winreg.HKEY_CURRENT_USER, "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FeatureUsage\\AppSwitched")
+            if key:
+                self.registry.close_key(key)
+                # The key itself contains the SID information
+                return "Current User"
+            return "Unknown"
         except Exception as e:
             print(f"Warning: Could not determine current user SID: {e}")
             return "Unknown"
     
     def _read_registry_value(self, key_path: str, value_name: Optional[str] = None) -> Optional[bytes]:
         """Read a registry value and return its data."""
-        try:
-            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path)
-            if value_name is None:
-                # Read default value
-                data, reg_type = winreg.QueryValueEx(key, "")
-            else:
-                data, reg_type = winreg.QueryValueEx(key, value_name)
-            winreg.CloseKey(key)
-            return data
-        except Exception as e:
-            print(f"Error reading registry value {key_path}\\{value_name}: {e}")
-            return None
+        return self.registry.read_registry_value(winreg.HKEY_CURRENT_USER, key_path, value_name)
     
     def _parse_featureusage_data(self, data: bytes) -> List[Dict[str, Any]]:
         """Parse FeatureUsage binary data structure."""
@@ -184,17 +180,21 @@ class FeatureUsageExtractor:
         
         try:
             # Open the AppSwitched registry key
-            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, self.featureusage_path)
+            key = self.registry.open_key(winreg.HKEY_CURRENT_USER, self.featureusage_path)
+            if key is None:
+                print(f"  Error: Could not open registry key {self.featureusage_path}")
+                return []
             
             entries = []
             
             # Get key information
-            try:
-                value_count, subkey_count, _ = winreg.QueryInfoKey(key)
+            key_info = self.registry.query_info_key(key)
+            if key_info is not None:
+                value_count, subkey_count, _ = key_info
                 print(f"  Registry key info: {value_count} values, {subkey_count} subkeys")
-            except Exception as e:
-                print(f"  Warning: Could not get key info: {e}")
+            else:
                 value_count = 0
+                print(f"  Warning: Could not get key info")
             
             if value_count == 0:
                 print("  ⚠️  No values found in AppSwitched registry key")
@@ -207,46 +207,45 @@ class FeatureUsageExtractor:
             # Enumerate all values in the key
             i = 0
             while True:
-                try:
-                    value_name, value_data, value_type = winreg.EnumValue(key, i)
-                    
-                    print(f"  Found value: {value_name} (type: {value_type}, size: {len(value_data) if isinstance(value_data, bytes) else len(str(value_data))})")
-                    
-                    if value_type == winreg.REG_BINARY:
-                        parsed_entries = self._parse_featureusage_data(value_data)
-                        
-                        for entry in parsed_entries:
-                            entry["source"] = "AppSwitched"
-                            entry["value_name"] = value_name
-                            entry["value_type"] = "REG_BINARY"
-                            entry["raw_data_size"] = len(value_data)
-                        
-                        entries.extend(parsed_entries)
-                        print(f"    Parsed {len(parsed_entries)} entries from binary data")
-                    
-                    elif value_type == winreg.REG_DWORD:
-                        # Handle DWORD values (this is what we're actually seeing)
-                        if isinstance(value_data, int):
-                            parsed_entry = self._parse_dword_appswitched_data(value_name, value_data)
-                            parsed_entry["source"] = "AppSwitched"
-                            parsed_entry["value_name"] = value_name
-                            parsed_entry["raw_data_size"] = 4  # DWORD is 4 bytes
-                            
-                            entries.append(parsed_entry)
-                            print(f"    Parsed DWORD entry: {parsed_entry['entry_type']} - {parsed_entry['app_identifier']}")
-                        else:
-                            print(f"    Warning: DWORD value is not an integer: {type(value_data)}")
-                    
-                    else:
-                        print(f"    Skipping non-binary/non-dword value (type: {value_type})")
-                    
-                    i += 1
-                    
-                except WindowsError:
-                    # No more values
+                value_info = self.registry.enum_value(key, i)
+                if value_info is None:
                     break
+                
+                value_name, value_data, value_type = value_info
+                
+                print(f"  Found value: {value_name} (type: {value_type}, size: {len(value_data) if isinstance(value_data, bytes) else len(str(value_data))})")
+                
+                if value_type == winreg.REG_BINARY:
+                    parsed_entries = self._parse_featureusage_data(value_data)
+                    
+                    for entry in parsed_entries:
+                        entry["source"] = "AppSwitched"
+                        entry["value_name"] = value_name
+                        entry["value_type"] = "REG_BINARY"
+                        entry["raw_data_size"] = len(value_data)
+                    
+                    entries.extend(parsed_entries)
+                    print(f"    Parsed {len(parsed_entries)} entries from binary data")
+                
+                elif value_type == winreg.REG_DWORD:
+                    # Handle DWORD values (this is what we're actually seeing)
+                    if isinstance(value_data, int):
+                        parsed_entry = self._parse_dword_appswitched_data(value_name, value_data)
+                        parsed_entry["source"] = "AppSwitched"
+                        parsed_entry["value_name"] = value_name
+                        parsed_entry["raw_data_size"] = 4  # DWORD is 4 bytes
+                        
+                        entries.append(parsed_entry)
+                        print(f"    Parsed DWORD entry: {parsed_entry['entry_type']} - {parsed_entry['app_identifier']}")
+                    else:
+                        print(f"    Warning: DWORD value is not an integer: {type(value_data)}")
+                
+                else:
+                    print(f"    Skipping non-binary/non-dword value (type: {value_type})")
+                
+                i += 1
             
-            winreg.CloseKey(key)
+            self.registry.close_key(key)
             
             if not entries:
                 print("  ℹ️  No AppSwitched data extracted - checking alternative sources...")
@@ -268,34 +267,35 @@ class FeatureUsageExtractor:
         startmenu_path = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FeatureUsage\\StartMenu"
         
         try:
-            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, startmenu_path)
+            key = self.registry.open_key(winreg.HKEY_CURRENT_USER, startmenu_path)
+            if key is None:
+                return []
             
             entries = []
             
             # Enumerate all values in the key
             i = 0
             while True:
-                try:
-                    value_name, value_data, value_type = winreg.EnumValue(key, i)
-                    
-                    if value_type == winreg.REG_BINARY:
-                        parsed_entries = self._parse_featureusage_data(value_data)
-                        
-                        for entry in parsed_entries:
-                            entry["source"] = "StartMenu"
-                            entry["value_name"] = value_name
-                            entry["value_type"] = "REG_BINARY"
-                            entry["raw_data_size"] = len(value_data)
-                        
-                        entries.extend(parsed_entries)
-                    
-                    i += 1
-                    
-                except WindowsError:
-                    # No more values
+                value_info = self.registry.enum_value(key, i)
+                if value_info is None:
                     break
+                
+                value_name, value_data, value_type = value_info
+                
+                if value_type == winreg.REG_BINARY:
+                    parsed_entries = self._parse_featureusage_data(value_data)
+                    
+                    for entry in parsed_entries:
+                        entry["source"] = "StartMenu"
+                        entry["value_name"] = value_name
+                        entry["value_type"] = "REG_BINARY"
+                        entry["raw_data_size"] = len(value_data)
+                    
+                    entries.extend(parsed_entries)
+                
+                i += 1
             
-            winreg.CloseKey(key)
+            self.registry.close_key(key)
             return entries
             
         except Exception as e:
@@ -309,34 +309,35 @@ class FeatureUsageExtractor:
         search_path = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FeatureUsage\\Search"
         
         try:
-            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, search_path)
+            key = self.registry.open_key(winreg.HKEY_CURRENT_USER, search_path)
+            if key is None:
+                return []
             
             entries = []
             
             # Enumerate all values in the key
             i = 0
             while True:
-                try:
-                    value_name, value_data, value_type = winreg.EnumValue(key, i)
-                    
-                    if value_type == winreg.REG_BINARY:
-                        parsed_entries = self._parse_featureusage_data(value_data)
-                        
-                        for entry in parsed_entries:
-                            entry["source"] = "Search"
-                            entry["value_name"] = value_name
-                            entry["value_type"] = "REG_BINARY"
-                            entry["raw_data_size"] = len(value_data)
-                        
-                        entries.extend(parsed_entries)
-                    
-                    i += 1
-                    
-                except WindowsError:
-                    # No more values
+                value_info = self.registry.enum_value(key, i)
+                if value_info is None:
                     break
+                
+                value_name, value_data, value_type = value_info
+                
+                if value_type == winreg.REG_BINARY:
+                    parsed_entries = self._parse_featureusage_data(value_data)
+                    
+                    for entry in parsed_entries:
+                        entry["source"] = "Search"
+                        entry["value_name"] = value_name
+                        entry["value_type"] = "REG_BINARY"
+                        entry["raw_data_size"] = len(value_data)
+                    
+                    entries.extend(parsed_entries)
+                
+                i += 1
             
-            winreg.CloseKey(key)
+            self.registry.close_key(key)
             return entries
             
         except Exception as e:
@@ -351,48 +352,57 @@ class FeatureUsageExtractor:
         showjumpview_path = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FeatureUsage\\ShowJumpView"
         entries = []
         try:
-            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, showjumpview_path)
-            try:
-                value_count, subkey_count, _ = winreg.QueryInfoKey(key)
+            key = self.registry.open_key(winreg.HKEY_CURRENT_USER, showjumpview_path)
+            if key is None:
+                return []
+            
+            key_info = self.registry.query_info_key(key)
+            if key_info is not None:
+                value_count, subkey_count, _ = key_info
                 print(f"  Registry key info: {value_count} values, {subkey_count} subkeys")
-            except Exception as e:
-                print(f"  Warning: Could not get key info: {e}")
+            else:
                 value_count = 0
+                print(f"  Warning: Could not get key info")
+            
             if value_count == 0:
                 print("  ⚠️  No values found in ShowJumpView registry key")
+            
             i = 0
             while True:
-                try:
-                    value_name, value_data, value_type = winreg.EnumValue(key, i)
-                    print(f"  Found value: {value_name} (type: {value_type}, size: {len(value_data) if isinstance(value_data, bytes) else len(str(value_data))})")
-                    if value_type == winreg.REG_DWORD and isinstance(value_data, int):
-                        entry = {
-                            "timestamp": datetime.now().isoformat(),
-                            "app_identifier": value_name,
-                            "usage_count": value_data,
-                            "raw_value": value_data,
-                            "value_type": "REG_DWORD",
-                            "source": "ShowJumpView",
-                            "value_name": value_name,
-                            "raw_data_size": 4
-                        }
-                        if value_name.endswith(".exe"):
-                            entry["entry_type"] = "Executable"
-                            entry["executable_path"] = value_name
-                        elif "!" in value_name:
-                            entry["entry_type"] = "UWP_App"
-                            entry["app_package"] = value_name
-                        else:
-                            entry["entry_type"] = "Application"
-                            entry["app_name"] = value_name
-                        entries.append(entry)
-                        print(f"    Parsed DWORD entry: {entry['entry_type']} - {entry['app_identifier']}")
-                    else:
-                        print(f"    Skipping non-dword value (type: {value_type})")
-                    i += 1
-                except WindowsError:
+                value_info = self.registry.enum_value(key, i)
+                if value_info is None:
                     break
-            winreg.CloseKey(key)
+                
+                value_name, value_data, value_type = value_info
+                print(f"  Found value: {value_name} (type: {value_type}, size: {len(value_data) if isinstance(value_data, bytes) else len(str(value_data))})")
+                
+                if value_type == winreg.REG_DWORD and isinstance(value_data, int):
+                    entry = {
+                        "timestamp": datetime.now().isoformat(),
+                        "app_identifier": value_name,
+                        "usage_count": value_data,
+                        "raw_value": value_data,
+                        "value_type": "REG_DWORD",
+                        "source": "ShowJumpView",
+                        "value_name": value_name,
+                        "raw_data_size": 4
+                    }
+                    if value_name.endswith(".exe"):
+                        entry["entry_type"] = "Executable"
+                        entry["executable_path"] = value_name
+                    elif "!" in value_name:
+                        entry["entry_type"] = "UWP_App"
+                        entry["app_package"] = value_name
+                    else:
+                        entry["entry_type"] = "Application"
+                        entry["app_name"] = value_name
+                    entries.append(entry)
+                    print(f"    Parsed DWORD entry: {entry['entry_type']} - {entry['app_identifier']}")
+                else:
+                    print(f"    Skipping non-dword value (type: {value_type})")
+                i += 1
+            
+            self.registry.close_key(key)
             if not entries:
                 print("  ℹ️  No ShowJumpView data extracted.")
             else:
@@ -408,55 +418,64 @@ class FeatureUsageExtractor:
         appbadgeupdated_path = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FeatureUsage\\AppBadgeUpdated"
         entries = []
         try:
-            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, appbadgeupdated_path)
-            try:
-                value_count, subkey_count, _ = winreg.QueryInfoKey(key)
+            key = self.registry.open_key(winreg.HKEY_CURRENT_USER, appbadgeupdated_path)
+            if key is None:
+                return []
+            
+            key_info = self.registry.query_info_key(key)
+            if key_info is not None:
+                value_count, subkey_count, _ = key_info
                 print(f"  Registry key info: {value_count} values, {subkey_count} subkeys")
-            except Exception as e:
-                print(f"  Warning: Could not get key info: {e}")
+            else:
                 value_count = 0
+                print(f"  Warning: Could not get key info")
+            
             if value_count == 0:
                 print("  ⚠️  No values found in AppBadgeUpdated registry key")
+            
             i = 0
             while True:
-                try:
-                    value_name, value_data, value_type = winreg.EnumValue(key, i)
-                    print(f"  Found value: {value_name} (type: {value_type}, size: {len(value_data) if isinstance(value_data, bytes) else len(str(value_data))})")
-                    if value_type == winreg.REG_DWORD and isinstance(value_data, int):
-                        entry = {
-                            "timestamp": datetime.now().isoformat(),
-                            "app_identifier": value_name,
-                            "badge_count": value_data,
-                            "raw_value": value_data,
-                            "value_type": "REG_DWORD",
-                            "source": "AppBadgeUpdated",
-                            "value_name": value_name,
-                            "raw_data_size": 4
-                        }
-                        if value_name.endswith(".exe"):
-                            entry["entry_type"] = "Executable"
-                            entry["executable_path"] = value_name
-                        elif "!" in value_name:
-                            entry["entry_type"] = "UWP_App"
-                            entry["app_package"] = value_name
-                        elif "PID" in value_name:
-                            entry["entry_type"] = "Process_ID"
-                            try:
-                                pid = value_name.replace("*PID", "").replace("0000", "")
-                                entry["process_id"] = int(pid, 16) if pid else None
-                            except:
-                                entry["process_id"] = None
-                        else:
-                            entry["entry_type"] = "Application"
-                            entry["app_name"] = value_name
-                        entries.append(entry)
-                        print(f"    Parsed DWORD entry: {entry['entry_type']} - {entry['app_identifier']} (Badge: {entry['badge_count']})")
-                    else:
-                        print(f"    Skipping non-dword value (type: {value_type})")
-                    i += 1
-                except WindowsError:
+                value_info = self.registry.enum_value(key, i)
+                if value_info is None:
                     break
-            winreg.CloseKey(key)
+                
+                value_name, value_data, value_type = value_info
+                print(f"  Found value: {value_name} (type: {value_type}, size: {len(value_data) if isinstance(value_data, bytes) else len(str(value_data))})")
+                
+                if value_type == winreg.REG_DWORD and isinstance(value_data, int):
+                    entry = {
+                        "timestamp": datetime.now().isoformat(),
+                        "app_identifier": value_name,
+                        "badge_count": value_data,
+                        "raw_value": value_data,
+                        "value_type": "REG_DWORD",
+                        "source": "AppBadgeUpdated",
+                        "value_name": value_name,
+                        "raw_data_size": 4
+                    }
+                    if value_name.endswith(".exe"):
+                        entry["entry_type"] = "Executable"
+                        entry["executable_path"] = value_name
+                    elif "!" in value_name:
+                        entry["entry_type"] = "UWP_App"
+                        entry["app_package"] = value_name
+                    elif "PID" in value_name:
+                        entry["entry_type"] = "Process_ID"
+                        try:
+                            pid = value_name.replace("*PID", "").replace("0000", "")
+                            entry["process_id"] = int(pid, 16) if pid else None
+                        except:
+                            entry["process_id"] = None
+                    else:
+                        entry["entry_type"] = "Application"
+                        entry["app_name"] = value_name
+                    entries.append(entry)
+                    print(f"    Parsed DWORD entry: {entry['entry_type']} - {entry['app_identifier']} (Badge: {entry['badge_count']})")
+                else:
+                    print(f"    Skipping non-dword value (type: {value_type})")
+                i += 1
+            
+            self.registry.close_key(key)
             if not entries:
                 print("  ℹ️  No AppBadgeUpdated data extracted.")
             else:
@@ -472,55 +491,64 @@ class FeatureUsageExtractor:
         applaunch_path = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FeatureUsage\\AppLaunch"
         entries = []
         try:
-            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, applaunch_path)
-            try:
-                value_count, subkey_count, _ = winreg.QueryInfoKey(key)
+            key = self.registry.open_key(winreg.HKEY_CURRENT_USER, applaunch_path)
+            if key is None:
+                return []
+            
+            key_info = self.registry.query_info_key(key)
+            if key_info is not None:
+                value_count, subkey_count, _ = key_info
                 print(f"  Registry key info: {value_count} values, {subkey_count} subkeys")
-            except Exception as e:
-                print(f"  Warning: Could not get key info: {e}")
+            else:
                 value_count = 0
+                print(f"  Warning: Could not get key info")
+            
             if value_count == 0:
                 print("  ⚠️  No values found in AppLaunch registry key")
+            
             i = 0
             while True:
-                try:
-                    value_name, value_data, value_type = winreg.EnumValue(key, i)
-                    print(f"  Found value: {value_name} (type: {value_type}, size: {len(value_data) if isinstance(value_data, bytes) else len(str(value_data))})")
-                    if value_type == winreg.REG_DWORD and isinstance(value_data, int):
-                        entry = {
-                            "timestamp": datetime.now().isoformat(),
-                            "app_identifier": value_name,
-                            "launch_count": value_data,
-                            "raw_value": value_data,
-                            "value_type": "REG_DWORD",
-                            "source": "AppLaunch",
-                            "value_name": value_name,
-                            "raw_data_size": 4
-                        }
-                        if value_name.endswith(".exe"):
-                            entry["entry_type"] = "Executable"
-                            entry["executable_path"] = value_name
-                        elif "!" in value_name:
-                            entry["entry_type"] = "UWP_App"
-                            entry["app_package"] = value_name
-                        elif "PID" in value_name:
-                            entry["entry_type"] = "Process_ID"
-                            try:
-                                pid = value_name.replace("*PID", "").replace("0000", "")
-                                entry["process_id"] = int(pid, 16) if pid else None
-                            except:
-                                entry["process_id"] = None
-                        else:
-                            entry["entry_type"] = "Application"
-                            entry["app_name"] = value_name
-                        entries.append(entry)
-                        print(f"    Parsed DWORD entry: {entry['entry_type']} - {entry['app_identifier']} (Launches: {entry['launch_count']})")
-                    else:
-                        print(f"    Skipping non-dword value (type: {value_type})")
-                    i += 1
-                except WindowsError:
+                value_info = self.registry.enum_value(key, i)
+                if value_info is None:
                     break
-            winreg.CloseKey(key)
+                
+                value_name, value_data, value_type = value_info
+                print(f"  Found value: {value_name} (type: {value_type}, size: {len(value_data) if isinstance(value_data, bytes) else len(str(value_data))})")
+                
+                if value_type == winreg.REG_DWORD and isinstance(value_data, int):
+                    entry = {
+                        "timestamp": datetime.now().isoformat(),
+                        "app_identifier": value_name,
+                        "launch_count": value_data,
+                        "raw_value": value_data,
+                        "value_type": "REG_DWORD",
+                        "source": "AppLaunch",
+                        "value_name": value_name,
+                        "raw_data_size": 4
+                    }
+                    if value_name.endswith(".exe"):
+                        entry["entry_type"] = "Executable"
+                        entry["executable_path"] = value_name
+                    elif "!" in value_name:
+                        entry["entry_type"] = "UWP_App"
+                        entry["app_package"] = value_name
+                    elif "PID" in value_name:
+                        entry["entry_type"] = "Process_ID"
+                        try:
+                            pid = value_name.replace("*PID", "").replace("0000", "")
+                            entry["process_id"] = int(pid, 16) if pid else None
+                        except:
+                            entry["process_id"] = None
+                    else:
+                        entry["entry_type"] = "Application"
+                        entry["app_name"] = value_name
+                    entries.append(entry)
+                    print(f"    Parsed DWORD entry: {entry['entry_type']} - {entry['app_identifier']} (Launches: {entry['launch_count']})")
+                else:
+                    print(f"    Skipping non-dword value (type: {value_type})")
+                i += 1
+            
+            self.registry.close_key(key)
             if not entries:
                 print("  ℹ️  No AppLaunch data extracted.")
             else:
@@ -765,11 +793,14 @@ class FeatureUsageExtractor:
         
         for source in alternative_sources:
             try:
-                key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, source)
+                key = self.registry.open_key(winreg.HKEY_CURRENT_USER, source)
+                if key is None:
+                    continue
                 
                 # Get key information
-                try:
-                    value_count, subkey_count, _ = winreg.QueryInfoKey(key)
+                key_info = self.registry.query_info_key(key)
+                if key_info is not None:
+                    value_count, subkey_count, _ = key_info
                     if value_count > 0 or subkey_count > 0:
                         print(f"  ✓ Found alternative source: {source}")
                         print(f"    Values: {value_count}, Subkeys: {subkey_count}")
@@ -778,10 +809,10 @@ class FeatureUsageExtractor:
                             "value_count": value_count,
                             "subkey_count": subkey_count
                         })
-                except Exception as e:
-                    print(f"  Warning: Could not get info for {source}: {e}")
+                else:
+                    print(f"  Warning: Could not get info for {source}")
                 
-                winreg.CloseKey(key)
+                self.registry.close_key(key)
                 
             except Exception:
                 # Key doesn't exist or can't be accessed

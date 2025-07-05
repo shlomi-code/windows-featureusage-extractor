@@ -9,6 +9,7 @@ import winreg
 import os
 from typing import Dict, Optional, List
 import re
+from .registry_access import RegistryAccess
 
 
 class AppResolver:
@@ -59,6 +60,7 @@ class AppResolver:
     def __init__(self):
         """Initialize the app resolver."""
         self.app_cache = {}  # Cache for resolved app names
+        self.registry = RegistryAccess()  # Initialize registry access
         self.registry_paths = [
             # Windows Store apps
             r"SOFTWARE\Classes\ActivatableClasses\Package",
@@ -323,9 +325,11 @@ class AppResolver:
             Application name or None if not found
         """
         try:
-            key = winreg.OpenKey(hkey, registry_path)
+            key = self.registry.open_key(hkey, registry_path)
+            if key is None:
+                return None
             app_name = self._search_start_menu_key(key, app_id)
-            winreg.CloseKey(key)
+            self.registry.close_key(key)
             return app_name
         except Exception:
             return None
@@ -344,33 +348,34 @@ class AppResolver:
         try:
             i = 0
             while True:
-                try:
-                    subkey_name = winreg.EnumKey(key, i)
-                    i += 1
-                    
-                    # Check if this subkey matches the app ID
-                    if app_id.lower() in subkey_name.lower():
-                        try:
-                            subkey = winreg.OpenKey(key, subkey_name)
+                subkey_name = self.registry.enum_key(key, i)
+                if subkey_name is None:
+                    break
+                i += 1
+                
+                # Check if this subkey matches the app ID
+                if app_id.lower() in subkey_name.lower():
+                    try:
+                        subkey = self.registry.open_key(winreg.HKEY_CURRENT_USER, subkey_name)
+                        if subkey:
                             app_name = self._get_app_name_from_start_menu_subkey(subkey)
-                            winreg.CloseKey(subkey)
+                            self.registry.close_key(subkey)
                             if app_name:
                                 return app_name
-                        except Exception:
-                            continue
-                    
-                    # Recursively search subkeys
-                    try:
-                        subkey = winreg.OpenKey(key, subkey_name)
-                        app_name = self._search_start_menu_key(subkey, app_id)
-                        winreg.CloseKey(subkey)
-                        if app_name:
-                            return app_name
                     except Exception:
                         continue
-                        
-                except WindowsError:
-                    break
+                
+                # Recursively search subkeys
+                try:
+                    subkey = self.registry.open_key(winreg.HKEY_CURRENT_USER, subkey_name)
+                    if subkey:
+                        app_name = self._search_start_menu_key(subkey, app_id)
+                        self.registry.close_key(subkey)
+                        if app_name:
+                            return app_name
+                except Exception:
+                    continue
+                    
         except Exception:
             pass
         
@@ -401,17 +406,21 @@ class AppResolver:
             
             for field in display_name_fields:
                 try:
-                    value, _ = winreg.QueryValueEx(subkey, field)
-                    if value and isinstance(value, str):
-                        return value.strip()
+                    result = self.registry.query_value_ex(subkey, field)
+                    if result is not None:
+                        value, _ = result
+                        if value and isinstance(value, str):
+                            return value.strip()
                 except Exception:
                     continue
             
             # Try default value
             try:
-                value, _ = winreg.QueryValueEx(subkey, "")
-                if value and isinstance(value, str):
-                    return value.strip()
+                result = self.registry.query_value_ex(subkey, None)
+                if result is not None:
+                    value, _ = result
+                    if value and isinstance(value, str):
+                        return value.strip()
             except Exception:
                 pass
                 
@@ -454,21 +463,23 @@ class AppResolver:
         """
         try:
             # Try HKEY_LOCAL_MACHINE first
-            key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, registry_path)
-            app_name = self._search_registry_key(key, app_id)
-            winreg.CloseKey(key)
-            if app_name:
-                return app_name
+            key = self.registry.open_key(winreg.HKEY_LOCAL_MACHINE, registry_path)
+            if key:
+                app_name = self._search_registry_key(key, app_id)
+                self.registry.close_key(key)
+                if app_name:
+                    return app_name
         except Exception:
             pass
         
         try:
             # Try HKEY_CURRENT_USER
-            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, registry_path)
-            app_name = self._search_registry_key(key, app_id)
-            winreg.CloseKey(key)
-            if app_name:
-                return app_name
+            key = self.registry.open_key(winreg.HKEY_CURRENT_USER, registry_path)
+            if key:
+                app_name = self._search_registry_key(key, app_id)
+                self.registry.close_key(key)
+                if app_name:
+                    return app_name
         except Exception:
             pass
         
@@ -488,33 +499,34 @@ class AppResolver:
         try:
             i = 0
             while True:
-                try:
-                    subkey_name = winreg.EnumKey(key, i)
-                    i += 1
-                    
-                    # Check if this subkey matches the app ID
-                    if app_id.lower() in subkey_name.lower():
-                        try:
-                            subkey = winreg.OpenKey(key, subkey_name)
+                subkey_name = self.registry.enum_key(key, i)
+                if subkey_name is None:
+                    break
+                i += 1
+                
+                # Check if this subkey matches the app ID
+                if app_id.lower() in subkey_name.lower():
+                    try:
+                        subkey = self.registry.open_key(winreg.HKEY_CURRENT_USER, subkey_name)
+                        if subkey:
                             app_name = self._get_app_name_from_subkey(subkey)
-                            winreg.CloseKey(subkey)
+                            self.registry.close_key(subkey)
                             if app_name:
                                 return app_name
-                        except Exception:
-                            continue
-                    
-                    # Recursively search subkeys
-                    try:
-                        subkey = winreg.OpenKey(key, subkey_name)
-                        app_name = self._search_registry_key(subkey, app_id)
-                        winreg.CloseKey(subkey)
-                        if app_name:
-                            return app_name
                     except Exception:
                         continue
-                        
-                except WindowsError:
-                    break
+                
+                # Recursively search subkeys
+                try:
+                    subkey = self.registry.open_key(winreg.HKEY_CURRENT_USER, subkey_name)
+                    if subkey:
+                        app_name = self._search_registry_key(subkey, app_id)
+                        self.registry.close_key(subkey)
+                        if app_name:
+                            return app_name
+                except Exception:
+                    continue
+                    
         except Exception:
             pass
         
@@ -542,17 +554,21 @@ class AppResolver:
             
             for field in display_name_fields:
                 try:
-                    value, _ = winreg.QueryValueEx(subkey, field)
-                    if value and isinstance(value, str):
-                        return value.strip()
+                    result = self.registry.query_value_ex(subkey, field)
+                    if result is not None:
+                        value, _ = result
+                        if value and isinstance(value, str):
+                            return value.strip()
                 except Exception:
                     continue
             
             # Try default value
             try:
-                value, _ = winreg.QueryValueEx(subkey, "")
-                if value and isinstance(value, str):
-                    return value.strip()
+                result = self.registry.query_value_ex(subkey, None)
+                if result is not None:
+                    value, _ = result
+                    if value and isinstance(value, str):
+                        return value.strip()
             except Exception:
                 pass
                 
@@ -614,9 +630,10 @@ class AppResolver:
         
         for hkey, path in registry_locations:
             try:
-                key = winreg.OpenKey(hkey, path)
-                self._collect_apps_from_key(key, apps)
-                winreg.CloseKey(key)
+                key = self.registry.open_key(hkey, path)
+                if key:
+                    self._collect_apps_from_key(key, apps)
+                    self.registry.close_key(key)
             except Exception:
                 continue
         
@@ -633,21 +650,21 @@ class AppResolver:
         try:
             i = 0
             while True:
+                subkey_name = self.registry.enum_key(key, i)
+                if subkey_name is None:
+                    break
+                i += 1
+                
                 try:
-                    subkey_name = winreg.EnumKey(key, i)
-                    i += 1
-                    
-                    try:
-                        subkey = winreg.OpenKey(key, subkey_name)
+                    subkey = self.registry.open_key(winreg.HKEY_CURRENT_USER, subkey_name)
+                    if subkey:
                         app_name = self._get_app_name_from_subkey(subkey)
-                        winreg.CloseKey(subkey)
+                        self.registry.close_key(subkey)
                         
                         if app_name:
                             apps[subkey_name] = app_name
-                    except Exception:
-                        continue
-                        
-                except WindowsError:
-                    break
+                except Exception:
+                    continue
+                    
         except Exception:
             pass 
