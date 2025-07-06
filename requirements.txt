@@ -1,5 +1,8 @@
 # Windows FeatureUsage Analyzer Requirements
-# No external dependencies required - uses only Python standard library
+# Core dependencies
+defusedxml>=0.7.1
+
+# No other external dependencies required - uses only Python standard library
 # This file is included for future extensibility
 
 # Core dependencies (built-in to Python)

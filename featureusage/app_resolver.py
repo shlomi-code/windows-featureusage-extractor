@@ -11,6 +11,14 @@ from typing import Dict, Optional, List
 import re
 from .registry_access import RegistryAccess
 
+# Initialize defusedxml to prevent XML attacks
+try:
+    import defusedxml
+    defusedxml.defuse_stdlib()  # type: ignore
+except ImportError:
+    # If defusedxml is not available, we'll use the regular xml.etree but with caution
+    pass
+
 
 class AppResolver:
     """Resolves Windows app IDs to readable application names."""
@@ -243,11 +251,14 @@ class AppResolver:
             Application name or None if not found
         """
         try:
-            import xml.etree.ElementTree as ET
+            import defusedxml.ElementTree as ET
             
             # Check if the manifest is for the app we're looking for
             tree = ET.parse(manifest_path)
             root = tree.getroot()
+            
+            if root is None:
+                return None
             
             # Look for the Package element and check if it matches our app_id
             for package in root.findall(".//{http://schemas.microsoft.com/appx/manifest/foundation/windows10}Package"):
