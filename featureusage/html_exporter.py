@@ -69,7 +69,8 @@ class HTMLExporter:
 <body>
     <h1>Windows FeatureUsage Extraction Report</h1>
     <p><strong>Extraction time:</strong> {results.get("extraction_time", "")}</p>
-    <p><strong>Current User SID:</strong> {results.get("current_user_sid", "")}</p>
+    <p><strong>Current User:</strong> {results.get("current_user_sid", "")}</p>
+    <p><strong>User SID:</strong> {results.get("full_user_sid", "")}</p>
     <p><strong>Total entries:</strong> {results.get("total_entries", 0)}</p>
     <p><strong>Summary:</strong> {results.get("summary", {})}</p>
     

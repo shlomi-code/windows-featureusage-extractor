@@ -54,6 +54,8 @@ class FeatureUsageExtractor:
         self.app_resolver = AppResolver()
         # Initialize registry access
         self.registry = RegistryAccess()
+        # Now that self.registry is available, get the full SID
+        self.full_user_sid = self._get_full_user_sid()
         # Initialize exporters
         self.json_exporter = JSONExporter()
         self.html_exporter = HTMLExporter()
@@ -61,16 +63,100 @@ class FeatureUsageExtractor:
     def _get_current_user_sid(self) -> str:
         """Get the SID of the currently running user."""
         try:
-            # Get current user SID from registry
-            key = self.registry.open_key(winreg.HKEY_CURRENT_USER, "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FeatureUsage\\AppSwitched")
-            if key:
-                self.registry.close_key(key)
-                # The key itself contains the SID information
-                return "Current User"
-            return "Unknown"
+            # Method 1: Try to get SID from HKEY_CURRENT_USER path
+            # The HKEY_CURRENT_USER key path contains the SID
+            import winreg
+            
+            # Get the actual path of HKEY_CURRENT_USER which contains the SID
+            # This is a more reliable method than trying to parse registry paths
+            try:
+                # Try to get user info from registry
+                key = self.registry.open_key(winreg.HKEY_CURRENT_USER, "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer")
+                if key:
+                    self.registry.close_key(key)
+                    
+                    # Get username from environment variables
+                    username = os.environ.get('USERNAME', '')
+                    domain = os.environ.get('USERDOMAIN', '')
+                    
+                    if username:
+                        if domain and domain != os.environ.get('COMPUTERNAME', ''):
+                            return f"{domain}\\{username}"
+                        else:
+                            return username
+                    else:
+                        return "Current User"
+                        
+            except Exception:
+                pass
+            
+            # Method 2: Try to extract SID from registry path
+            try:
+                # Look for SID in common registry locations
+                sid_locations = [
+                    "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FeatureUsage\\AppSwitched",
+                    "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FeatureUsage\\AppLaunch",
+                    "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FeatureUsage\\ShowJumpView"
+                ]
+                
+                for location in sid_locations:
+                    try:
+                        key = self.registry.open_key(winreg.HKEY_CURRENT_USER, location)
+                        if key:
+                            self.registry.close_key(key)
+                            # If we can access HKEY_CURRENT_USER, we're the current user
+                            username = os.environ.get('USERNAME', 'Current User')
+                            return username
+                    except Exception:
+                        continue
+                        
+            except Exception:
+                pass
+            
+            # Method 3: Fallback to environment variables
+            username = os.environ.get('USERNAME', '')
+            if username:
+                return username
+            
+            # Method 4: Final fallback
+            return "Current User"
+            
         except Exception as e:
             print(f"Warning: Could not determine current user SID: {e}")
-            return "Unknown"
+            return "Current User"
+    
+    def _get_full_user_sid(self) -> str:
+        """Get the full Windows SID of the current user (optional method)."""
+        try:
+            import winreg
+            key = self.registry.open_key(winreg.HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProfileList")
+            if key:
+                current_profile = os.environ.get('USERPROFILE', '')
+                if current_profile:
+                    i = 0
+                    while True:
+                        subkey_name = self.registry.enum_key(key, i)
+                        if subkey_name is None:
+                            break
+                        try:
+                            subkey = self.registry.open_key(winreg.HKEY_LOCAL_MACHINE, f"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProfileList\\{subkey_name}")
+                            if subkey:
+                                profile_path = self.registry.read_registry_value(winreg.HKEY_LOCAL_MACHINE, f"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProfileList\\{subkey_name}", "ProfileImagePath")
+                                if profile_path and isinstance(profile_path, str):
+                                    expanded_path = os.path.expandvars(profile_path)
+                                    if current_profile.lower() == expanded_path.lower():
+                                        self.registry.close_key(subkey)
+                                        self.registry.close_key(key)
+                                        return subkey_name
+                                self.registry.close_key(subkey)
+                        except Exception:
+                            pass
+                        i += 1
+                self.registry.close_key(key)
+            return "SID not found"
+        except Exception as e:
+            print(f"Warning: Could not determine full user SID: {e}")
+            return "SID not found"
     
     def _read_registry_value(self, key_path: str, value_name: Optional[str] = None) -> Optional[bytes]:
         """Read a registry value and return its data."""
@@ -566,7 +652,8 @@ class FeatureUsageExtractor:
     def extract_all_data(self) -> Dict[str, Any]:
         """Extract all FeatureUsage data from registry."""
         print("Starting FeatureUsage artifact extraction...")
-        print(f"Current User SID: {self.current_user_sid}")
+        print(f"Current User: {self.current_user_sid}")
+        print(f"Full User SID: {self.full_user_sid}")
         print("-" * 50)
         
         # Extract data from different FeatureUsage sources
@@ -618,6 +705,7 @@ class FeatureUsageExtractor:
             "applaunch_entries": len(applaunch_data),
             "total_appswitched_entries": len(resolved_all_appswitched_data)
         }
+        self.results["full_user_sid"] = self.full_user_sid
         
         print(f"\nExtraction completed!")
         print(f"Total entries found: {len(resolved_all_data)}")
