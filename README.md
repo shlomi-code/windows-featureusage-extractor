@@ -156,8 +156,8 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 - [The Windows Forensic Journey: FeatureUsage](https://medium.com/@boutnaru/the-windows-forensic-journey-featureusage-aed8f14c84ab)
 - [The Windows Forensic Journey: AppSwitched](https://medium.com/@boutnaru/the-windows-forensic-journey-appswitched-55abc690f0f0)
-- Windows Registry Forensics documentation
-- Microsoft Windows Internals
+- [The Windows Forensic Journey: ShowJumpView](https://medium.com/@boutnaru/the-windows-forensic-journey-showjumpview-ec24a17ecaf0)
+- [The Windows Forensic Journey: AppLaunch](https://medium.com/@boutnaru/the-windows-forensic-journey-applaunch-617c0635e126)
 
 ## Disclaimer
 
