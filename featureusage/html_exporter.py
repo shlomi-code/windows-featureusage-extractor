@@ -67,7 +67,10 @@ class HTMLExporter:
     {self._get_css_styles()}
 </head>
 <body>
-    <h1>Windows FeatureUsage Extraction Report</h1>
+    <div class="header-container">
+        <img src="icon.svg" alt="Windows FeatureUsage Analyzer Icon" class="report-icon">
+        <h1>Windows FeatureUsage Extraction Report</h1>
+    </div>
     <p><strong>Extraction time:</strong> {results.get("extraction_time", "")}</p>
     <p><strong>Current User:</strong> {results.get("current_user_sid", "")}</p>
     <p><strong>User SID:</strong> {results.get("full_user_sid", "")}</p>
@@ -232,6 +235,32 @@ class HTMLExporter:
         """
         return '''<style>
         body { font-family: sans-serif; margin: 20px; }
+        
+        .header-container { 
+            display: flex; 
+            align-items: center; 
+            gap: 20px; 
+            margin-bottom: 30px; 
+            padding: 20px; 
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); 
+            border-radius: 10px; 
+            border: 1px solid #dee2e6; 
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1); 
+        }
+        
+        .report-icon { 
+            width: 64px; 
+            height: 64px; 
+            flex-shrink: 0; 
+        }
+        
+        .header-container h1 { 
+            margin: 0; 
+            color: #495057; 
+            font-size: 28px; 
+            font-weight: bold; 
+        }
+        
         table { border-collapse: collapse; margin: 20px 0; }
         th, td { padding: 8px 12px; text-align: left; border: 1px solid #ddd; }
         th { background: #f2f2f2; font-weight: bold; }
