@@ -4,6 +4,8 @@
   <img src="icon.svg" alt="Windows FeatureUsage Analyzer Icon" width="128" height="128">
 </div>
 
+*The icon represents the tool's core functionality: Windows registry analysis (blue background with Windows squares), forensic investigation (magnifying glass), and data extraction (golden registry bars with scanning lines and flow arrows).*
+
 A Python script to extract FeatureUsage artifacts from the Windows registry for forensic analysis and user behavior tracking.
 
 ## Overview
