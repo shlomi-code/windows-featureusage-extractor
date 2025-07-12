@@ -224,8 +224,6 @@ class FeatureUsageExtractor:
         
         return entries
     
-
-    
     def _parse_dword_appswitched_data(self, value_name: str, value_data: int) -> Dict[str, Any]:
         """Parse DWORD AppSwitched data structure."""
         # DWORD values in AppSwitched typically represent usage counts or flags
@@ -349,8 +347,6 @@ class FeatureUsageExtractor:
             print(f"Error extracting AppSwitched data: {e}")
             return []
     
-
-    
     def extract_startmenu_data(self) -> List[Dict[str, Any]]:
         """Extract StartMenu FeatureUsage data."""
         print("Extracting StartMenu FeatureUsage data...")
@@ -434,8 +430,6 @@ class FeatureUsageExtractor:
         except Exception as e:
             print(f"Error extracting Search data: {e}")
             return []
-    
-
     
     def extract_showjumpview_data(self) -> List[Dict[str, Any]]:
         """Extract ShowJumpView FeatureUsage data."""

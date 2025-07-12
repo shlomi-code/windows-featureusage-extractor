@@ -1,5 +1,9 @@
 # Windows FeatureUsage Analyzer
 
+<div align="center">
+  <img src="icon.svg" alt="Windows FeatureUsage Analyzer Icon" width="128" height="128">
+</div>
+
 A Python script to extract FeatureUsage artifacts from the Windows registry for forensic analysis and user behavior tracking.
 
 ## Overview
