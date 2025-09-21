@@ -18,13 +18,14 @@ class JSONExporter:
         """Initialize the JSON exporter."""
         pass
     
-    def export_results(self, results: Dict[str, Any], filename: Optional[str] = None) -> str:
+    def export_results(self, results: Dict[str, Any], filename: Optional[str] = None, output_dir: str = ".") -> str:
         """
         Export extraction results to a JSON file.
         
         Args:
             results: Dictionary containing the extraction results
             filename: Optional filename for the output file
+            output_dir: Directory to save the file (default: current directory)
             
         Returns:
             Filename of the saved JSON file or empty string if failed
@@ -33,12 +34,16 @@ class JSONExporter:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"featureusage_extraction_{timestamp}.json"
         
+        # Ensure the output directory is used
+        import os
+        full_path = os.path.join(output_dir, filename)
+        
         try:
-            with open(filename, 'w', encoding='utf-8') as f:
+            with open(full_path, 'w', encoding='utf-8') as f:
                 json.dump(results, f, indent=2, ensure_ascii=False)
             
-            print(f"\nResults saved to: {filename}")
-            return filename
+            print(f"\nResults saved to: {full_path}")
+            return full_path
             
         except Exception as e:
             print(f"Error saving results: {e}")

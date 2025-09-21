@@ -17,13 +17,14 @@ class HTMLExporter:
         """Initialize the HTML exporter."""
         pass
     
-    def export_results(self, results: Dict[str, Any], filename: Optional[str] = None) -> str:
+    def export_results(self, results: Dict[str, Any], filename: Optional[str] = None, output_dir: str = ".") -> str:
         """
         Export extraction results to an HTML file with tables and search functionality.
         
         Args:
             results: Dictionary containing the extraction results
             filename: Optional filename for the output file
+            output_dir: Directory to save the file (default: current directory)
             
         Returns:
             Filename of the saved HTML file or empty string if failed
@@ -32,12 +33,16 @@ class HTMLExporter:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"featureusage_extraction_{timestamp}.html"
         
+        # Ensure the output directory is used
+        import os
+        full_path = os.path.join(output_dir, filename)
+        
         try:
             html_content = self._generate_html_content(results)
-            with open(filename, 'w', encoding='utf-8') as f:
+            with open(full_path, 'w', encoding='utf-8') as f:
                 f.write(html_content)
-            print(f"\nHTML report saved to: {filename}")
-            return filename
+            print(f"\nHTML report saved to: {full_path}")
+            return full_path
         except Exception as e:
             print(f"Error saving HTML report: {e}")
             return ""

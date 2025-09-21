@@ -767,9 +767,9 @@ class FeatureUsageExtractor:
         
         return resolved_data
     
-    def save_results(self, filename: Optional[str] = None) -> str:
+    def save_results(self, filename: Optional[str] = None, output_dir: str = ".") -> str:
         """Save extraction results to a JSON file."""
-        return self.json_exporter.export_results(self.results, filename)
+        return self.json_exporter.export_results(self.results, filename, output_dir)
     
     def print_summary(self):
         """Print a summary of the extracted data."""
@@ -951,9 +951,9 @@ class FeatureUsageExtractor:
         print("After performing these activities, run the extractor again to see if data appears.")
         print("=" * 60)
 
-    def export_to_html(self, filename: Optional[str] = None) -> str:
+    def export_to_html(self, filename: Optional[str] = None, output_dir: str = ".") -> str:
         """Export the extraction results to an HTML file with tables and search functionality."""
-        return self.html_exporter.export_results(self.results, filename)
+        return self.html_exporter.export_results(self.results, filename, output_dir)
 
 
 def main():
@@ -967,12 +967,20 @@ Examples:
   python featureusage_extractor.py                    # Generate HTML report only (default)
   python featureusage_extractor.py --json             # Generate both HTML and JSON reports
   python featureusage_extractor.py -j                 # Short form for JSON export
+  python featureusage_extractor.py -o /path/to/output # Save files to specific directory
+  python featureusage_extractor.py --json -o ./reports # Generate both formats in ./reports
         """
     )
     parser.add_argument(
         '--json', '-j',
         action='store_true',
         help='Also export results to JSON format'
+    )
+    parser.add_argument(
+        '--output-dir', '-o',
+        type=str,
+        default='.',
+        help='Directory to save output files (default: current directory)'
     )
     
     args = parser.parse_args()
@@ -991,8 +999,14 @@ Examples:
         # Print summary
         extractor.print_summary()
         
+        # Ensure output directory exists
+        import os
+        if not os.path.exists(args.output_dir):
+            os.makedirs(args.output_dir)
+            print(f"Created output directory: {args.output_dir}")
+        
         # Export to HTML (always done)
-        html_file = extractor.export_to_html()
+        html_file = extractor.export_to_html(output_dir=args.output_dir)
         if html_file:
             print(f"\nHTML report saved to: {html_file}")
         else:
@@ -1000,7 +1014,7 @@ Examples:
         
         # Export to JSON (only if requested)
         if args.json:
-            output_file = extractor.save_results()
+            output_file = extractor.save_results(output_dir=args.output_dir)
             if output_file:
                 print(f"JSON results saved to: {output_file}")
             else:
