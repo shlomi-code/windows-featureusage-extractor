@@ -50,7 +50,13 @@ python featureusage_extractor.py
 The script generates:
 - Console output with extraction progress and detailed summary
 - JSON file with detailed extraction results (timestamped filename)
+- HTML report with interactive charts and searchable data tables
 - Separate sections for general FeatureUsage and AppSwitched-specific data
+
+#### Example HTML Report
+
+![HTML Report Example](examples/html_report_example.png)
+*Screenshot of an example HTML report showing the interactive interface with artifact distribution charts, search functionality, and collapsible data sections.*
 
 ### Example Output
 
