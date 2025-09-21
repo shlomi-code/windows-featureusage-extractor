@@ -21,14 +21,14 @@ import struct
 import argparse
 
 # Import the GUID resolver
-from featureusage.guid_resolver import GUIDResolver
+from modules.featureusage.guid_resolver import GUIDResolver
 # Import the app resolver
-from featureusage.app_resolver import AppResolver
+from modules.featureusage.app_resolver import AppResolver
 # Import the registry access class
-from featureusage.registry_access import RegistryAccess
+from modules.featureusage.registry_access import RegistryAccess
 # Import the export classes
-from featureusage.json_exporter import JSONExporter
-from featureusage.html_exporter import HTMLExporter
+from modules.featureusage.json_exporter import JSONExporter
+from modules.featureusage.html_exporter import HTMLExporter
 
 
 class FeatureUsageExtractor:

@@ -502,8 +502,8 @@ class HTMLExporter:
             import os
             import base64
             
-            # Try to find the icon file in the same directory as the script
-            icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'icon.svg')
+            # Try to find the icon file in the root directory (two levels up from modules/featureusage/)
+            icon_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'icon.svg')
             
             if os.path.exists(icon_path):
                 with open(icon_path, 'rb') as f:
