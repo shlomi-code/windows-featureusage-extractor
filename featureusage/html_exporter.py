@@ -15,7 +15,7 @@ class HTMLExporter:
     
     def __init__(self):
         """Initialize the HTML exporter."""
-        pass
+        self._icon_data_uri = self._get_embedded_icon()
     
     def export_results(self, results: Dict[str, Any], filename: Optional[str] = None, output_dir: str = ".") -> str:
         """
@@ -73,7 +73,7 @@ class HTMLExporter:
 </head>
 <body>
     <div class="header-container">
-        <img src="icon.svg" alt="Windows FeatureUsage Analyzer Icon" class="report-icon">
+        <img src="{self._icon_data_uri}" alt="Windows FeatureUsage Analyzer Icon" class="report-icon">
         <h1>Windows FeatureUsage Extraction Report</h1>
     </div>
     <p><strong>Extraction time:</strong> {results.get("extraction_time", "")}</p>
@@ -489,4 +489,41 @@ class HTMLExporter:
             }
         }
         
-        return summary 
+        return summary
+    
+    def _get_embedded_icon(self) -> str:
+        """
+        Get the embedded icon as a base64 data URI.
+        
+        Returns:
+            Base64 data URI string for the icon, or empty string if icon not found
+        """
+        try:
+            import os
+            import base64
+            
+            # Try to find the icon file in the same directory as the script
+            icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'icon.svg')
+            
+            if os.path.exists(icon_path):
+                with open(icon_path, 'rb') as f:
+                    icon_data = f.read()
+                    # Encode as base64 and create data URI
+                    base64_data = base64.b64encode(icon_data).decode('utf-8')
+                    return f"data:image/svg+xml;base64,{base64_data}"
+            else:
+                print("Warning: icon.svg not found, using fallback icon")
+                # Fallback: create a simple base64-encoded SVG icon
+                fallback_svg = '''<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="32" cy="32" r="30" fill="#0078d4" stroke="#106ebe" stroke-width="2"/>
+                    <rect x="16" y="16" width="10" height="10" fill="white" rx="1"/>
+                    <rect x="28" y="16" width="10" height="10" fill="white" rx="1"/>
+                    <rect x="16" y="28" width="10" height="10" fill="white" rx="1"/>
+                    <rect x="28" y="28" width="10" height="10" fill="white" rx="1"/>
+                </svg>'''
+                base64_data = base64.b64encode(fallback_svg.encode('utf-8')).decode('utf-8')
+                return f"data:image/svg+xml;base64,{base64_data}"
+                
+        except Exception as e:
+            print(f"Warning: Could not embed icon: {e}")
+            return "" 
