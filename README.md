@@ -1,7 +1,7 @@
-# Windows FeatureUsage Analyzer
+# Windows FeatureUsage Extrator
 
 <div align="center">
-  <img src="icon.svg" alt="Windows FeatureUsage Analyzer Icon" width="128" height="128">
+  <img src="icon.svg" alt="Windows FeatureUsage Extractor Icon" width="128" height="128">
 </div>
 
 *The icon represents the tool's core functionality: Windows registry analysis (blue background with Windows squares), forensic investigation (magnifying glass), and data extraction (golden registry bars with scanning lines and flow arrows).*
