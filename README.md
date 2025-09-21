@@ -1,4 +1,4 @@
-# Windows FeatureUsage Extrator
+# Windows FeatureUsage Extractor
 
 <div align="center">
   <img src="icon.svg" alt="Windows FeatureUsage Extractor Icon" width="128" height="128">
